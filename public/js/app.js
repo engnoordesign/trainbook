@@ -26,9 +26,9 @@
   /* ---------- theme ---------- */
   var COLORS = { light: '#f4f5f8', dark: '#0e1116', superLight: '#fff1f1', superDark: '#150b0c' };
   App.refreshTheme = function () {
-    var S = Store.get(), th = S.theme;
+    var signedIn = !!Auth.profile(), th = signedIn ? Store.get().theme : Auth.deviceTheme();
     if (th === 'auto') th = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    var sup = Store.isSuper(Store.todayKey());
+    var sup = signedIn && Store.isSuper(Store.todayKey());
     var root = document.documentElement;
     root.dataset.theme = th; root.dataset.super = sup ? '1' : '0';
     var m = $('meta[name=theme-color]');
@@ -40,7 +40,7 @@
   }
 
   /* ---------- chrome (top bar, nav, pill) ---------- */
-  var LOGO = '<svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="currentColor"/><rect x="9" y="8" width="14" height="17" rx="2.5" fill="#fff"/><path d="M9 12h-1.5M9 16.5H7.5M9 21H7.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="m12.6 16.6 2.3 2.3 4.6-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var LOGO = UI.LOGO;
 
   function renderTop(r) {
     var sup = Store.isSuper(Store.todayKey());
@@ -57,7 +57,7 @@
       }).join('') + '</nav>';
   }
   function renderPill() {
-    var el = $('#pill'), p = route() !== 'train' ? Timer.pill() : null;
+    var el = $('#pill'), p = Auth.profile() && route() !== 'train' ? Timer.pill() : null;
     var sig = p ? p.icon + '|' + p.text + '|' + p.label : '';
     if (sig === pillCache) return;
     pillCache = sig;
@@ -66,6 +66,7 @@
 
   /* ---------- render ---------- */
   App.render = function () {
+    if (!Auth.profile()) return;                 // locked: nothing personal is drawn
     var r = route();
     $('#view').innerHTML = V[r]();
     $('#view').dataset.route = r;
@@ -76,7 +77,7 @@
 
   /* ---------- language ---------- */
   App.setLang = function (l) {
-    I18N.setLang(l); Store.setPref('lang', l);
+    I18N.setLang(l); Store.setPref('lang', l); Auth.setDevice({ lang: l });
     App.render(); UI.refreshSettings();
   };
 
@@ -129,6 +130,10 @@
   }
   function registerSW() {
     if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+    if (BUILD === 'dev') {                          // unstamped (development) build: no offline cache, and clear any leftover worker
+      navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.unregister(); }); }).catch(function () { });
+      return;
+    }
     navigator.serviceWorker.register('sw.js').then(function (reg) {
       swReg = reg;
       if (reg.waiting && navigator.serviceWorker.controller) promptUpdate(reg.waiting);
@@ -163,7 +168,8 @@
     rd.onload = function () {
       try {
         Store.importJSON(String(rd.result));
-        I18N.setLang(Store.get().lang || I18N.detect());
+        var lg = Store.get().lang || Auth.deviceLang(); Store.get().lang = lg;
+        I18N.setLang(lg); Auth.setDevice({ lang: lg });
         UI.closeSheet(); App.refreshTheme(); App.render(); UI.toast(t('set.imported'));
       } catch (err) { UI.toast(t('set.importFail')); }
     };
@@ -199,16 +205,23 @@
     qrSave: function () { UI.qrAct('qrSave'); },
     qrShare: function () { UI.qrAct('qrShare'); },
     setLang: function (d) { App.setLang(d.v); },
-    setTheme: function (d) { Store.setPref('theme', d.v); App.refreshTheme(); UI.refreshSettings(); },
+    setTheme: function (d) { Store.setPref('theme', d.v); Auth.setDevice({ theme: d.v }); App.refreshTheme(); UI.refreshSettings(); },
     setWeek: function (d) { Store.setPref('weekStart', +d.v); App.render(); UI.refreshSettings(); },
     install: install,
     export: exportData,
     checkUpdate: checkUpdate,
-    resetAll: function () {
-      UI.confirm({ title: t('set.reset'), msg: t('set.resetMsg'), ok: t('set.reset'), danger: true, onOk: function () {
-        Store.reset(); try { localStorage.removeItem('trainbook.timer.v1'); } catch (e) { } location.hash = '#/today'; location.reload();
-      } });
-    },
+    /* profile and security */
+    acctLock: function () { Account.lock(); },
+    acctSwitch: function () { Account.switchProfile(); },
+    acctAuto: function (d) { Account.setAuto(d.v); },
+    acctStay: function () { Account.toggleStay(); },
+    acctRename: function () { Account.openRename(); },
+    acctPass: function () { Account.openPassword(); },
+    acctKey: function () { Account.openKey(); },
+    acctDelete: function () { Account.openDelete(); },
+    acctCopyKey: function () { Account.copyKey(); },
+    acctSaveKey: function () { Account.saveKey(); },
+    peek: function (d) { Auth.peek(d.for); },
     chk: function (d) { Store.setStatus(d.k, d.id, 'done'); App.render(); },
     closeSheet: function () { UI.closeSheet(); },
     confirmOk: function () { UI.confirmOk(); },
@@ -249,6 +262,13 @@
     else if (e.target.id === 'qr-url') UI.qrInput(e.target.value);
   });
   document.addEventListener('change', function (e) { if (e.target.id === 'imp-file' && e.target.files[0]) importData(e.target.files[0]); });
+  /* forms inside dialogs (the lock screen handles its own forms in auth.js) */
+  document.addEventListener('submit', function (e) {
+    var f = e.target.closest && e.target.closest('form[data-submit]');
+    if (!f) return;
+    e.preventDefault();
+    Account.submit(f.dataset.submit, f);
+  });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && UI.sheetOpen()) UI.closeSheet();
     if (e.key === 'Enter' && e.target.id === 'f-title') { e.preventDefault(); UI.formSave(); }
@@ -257,6 +277,7 @@
 
   /* ---------- day rollover ---------- */
   function checkDay() {
+    if (!Auth.profile()) return;
     var d = Store.todayKey();
     if (d !== lastDay) { lastDay = d; Store.ensureDays(); App.refreshTheme(); if (!UI.sheetOpen()) App.render(); }
   }
@@ -264,18 +285,27 @@
   setInterval(checkDay, 30000);
 
   /* ---------- boot ---------- */
-  function boot() {
-    Store.load();
-    var l0 = Store.get().lang || I18N.detect();
-    Store.get().lang = l0; I18N.setLang(l0);
+  /* Called by auth.js right after a profile is unlocked (the data is loaded and decrypted by then). */
+  App.afterUnlock = function () {
+    var S = Store.get();
+    I18N.setLang(S.lang || Auth.deviceLang());
+    Auth.setDevice({ lang: I18N.lang, theme: S.theme });
     Store.ensureDays(); lastDay = Store.todayKey();
+    App.refreshTheme();
+    if (!/^#\/(today|course|train|courses|history)$/.test(location.hash)) history.replaceState(null, '', '#/today');
+    window.scrollTo(0, 0);
+    App.render();
+    document.documentElement.classList.add('ready');
+  };
+
+  function boot() {
+    I18N.setLang(Auth.deviceLang());
+    Store.onStorageError = function () { UI.toast(t('au.errGeneric'), { ms: 8000 }); };
     Timer.load();
     Timer.setHandlers(function () { if (route() === 'train') UI.tickTrain(); renderPill(); }, function () { if (!quietFlag) { App.render(); } });
     App.refreshTheme();
-    if (!/^#\/(today|course|train|courses|history)$/.test(location.hash)) history.replaceState(null, '', '#/today');
-    App.render();
     registerSW();
-    document.documentElement.classList.add('ready');
+    Auth.start();                                  // shows the lock screen, or resumes a signed-in session -> App.afterUnlock()
   }
   boot();
 })();

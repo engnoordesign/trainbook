@@ -12,6 +12,7 @@
     });
   };
   UI.ic = Icons.ic;
+  UI.LOGO = '<svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="currentColor"/><rect x="9" y="8" width="14" height="17" rx="2.5" fill="#fff"/><path d="M9 12h-1.5M9 16.5H7.5M9 21H7.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><path d="m12.6 16.6 2.3 2.3 4.6-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   /* ----- locale helpers ----- */
   UI.loc = function () { return I18N.lang === 'ar' ? 'ar-u-nu-latn' : 'en'; };
@@ -44,16 +45,17 @@
   };
 
   /* ----- sheet ----- */
-  var lastFocus = null, onClose = null;
+  var lastFocus = null, onClose = null, sheetIsOpen = false;
   UI.openSheet = function (html, opts) {
     opts = opts || {};
     var root = UI.$('#sheet-root');
     if (root.firstChild) UI.closeSheet(true);
-    lastFocus = document.activeElement; onClose = opts.onClose || null;
+    lastFocus = document.activeElement; onClose = opts.onClose || null; sheetIsOpen = true;
     root.innerHTML = '<div class="backdrop" data-act="closeSheet"></div>' +
       '<div class="sheet ' + (opts.cls || '') + '" role="dialog" aria-modal="true" aria-label="' + UI.esc(opts.label || '') + '" tabindex="-1">' + html + '</div>';
     document.body.classList.add('noscroll');
-    requestAnimationFrame(function () { root.classList.add('open'); });
+    var show = function () { if (sheetIsOpen) root.classList.add('open'); };
+    requestAnimationFrame(show); setTimeout(show, 60);       // the timer is a fallback for tabs where animation frames are paused
     var sheet = UI.$('.sheet', root);
     var auto = UI.$('[autofocus]', sheet);
     setTimeout(function () { (auto || sheet).focus({ preventScroll: true }); }, 60);
@@ -63,11 +65,11 @@
     var s = UI.$('#sheet-root .sheet'); if (!s) return;
     var sc = s.scrollTop; s.innerHTML = html; s.scrollTop = sc;
   };
-  UI.sheetOpen = function () { return !!UI.$('#sheet-root.open .sheet'); };
+  UI.sheetOpen = function () { return sheetIsOpen; };
   UI.closeSheet = function (quiet) {
     var root = UI.$('#sheet-root');
     if (!root.firstChild) return;
-    var cb = onClose; onClose = null;
+    var cb = onClose; onClose = null; sheetIsOpen = false;
     root.classList.remove('open');
     var fin = function () { root.innerHTML = ''; };
     if (quiet) fin(); else setTimeout(fin, 220);

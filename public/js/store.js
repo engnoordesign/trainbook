@@ -1,4 +1,4 @@
-/* State + persistence (localStorage). Everything stays on the device. */
+/* State + persistence. Everything stays on the device; the signed-in profile's data is saved encrypted (see auth.js). */
 (function () {
   'use strict';
 
@@ -38,17 +38,37 @@
   function uid() { return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4); }
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
-  /* ---------- persistence ---------- */
-  function load() {
+  /* ---------- persistence ----------
+     The data of the signed-in profile is saved through `persistFn` (set by auth.js), which encrypts it.
+     When nobody is signed in S is an empty placeholder and nothing is saved. */
+  var persistFn = null, writeChain = Promise.resolve();
+
+  /** Start using a profile's data (raw = parsed JSON from storage, or null for a new profile). */
+  function attach(raw, saver) {
+    S = Object.assign(def(), raw && typeof raw === 'object' ? raw : {});
+    normalise();
+    persistFn = saver;
+  }
+  /** Stop using the data (locking). Pending changes are written first by flush(). */
+  function detach() { persistFn = null; clearTimeout(saveT); saveT = null; S = def(); }
+  /** Replace the state with data that changed in another tab. */
+  function replace(raw) { S = Object.assign(def(), raw && typeof raw === 'object' ? raw : {}); normalise(); }
+  /** Read the old unencrypted data (pre-profiles versions) without touching the current state, or null. */
+  function readLegacy() {
+    var keep = S, out = null;
     try {
       var raw = localStorage.getItem(KEY);
       if (raw) {
         var o = JSON.parse(raw);
-        if (o && typeof o === 'object') S = Object.assign(def(), o);
+        if (o && typeof o === 'object' && (Array.isArray(o.plan) && o.plan.length || o.logs && Object.keys(o.logs).length)) {
+          S = Object.assign(def(), o); normalise(); out = S;
+        }
       }
-    } catch (e) { /* private mode etc. -> memory only */ }
-    normalise();
+    } catch (e) { out = null; }
+    S = keep;
+    return out;
   }
+  function dropLegacy() { try { localStorage.removeItem(KEY); } catch (e) { } }
   /* Validate everything that comes from storage / an imported file, so odd data can never break the UI or inject markup. */
   var DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
   function idOk(s) { return typeof s === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(s); }
@@ -88,8 +108,15 @@
     S.lastSeen = DATE_RE.test(S.lastSeen) ? S.lastSeen : null;
     S.shareUrl = typeof S.shareUrl === 'string' && /^https?:\/\/[^\s<>"']{3,300}$/i.test(S.shareUrl) ? S.shareUrl : '';
   }
-  function flush() { clearTimeout(saveT); saveT = null; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } }
-  function save() { clearTimeout(saveT); saveT = setTimeout(flush, 120); }
+  /** Write now (encrypted by persistFn). Returns a promise; writes are queued so they can never land out of order. */
+  function flush() {
+    clearTimeout(saveT); saveT = null;
+    if (!persistFn) return writeChain;
+    var json = JSON.stringify(S), fn = persistFn;
+    writeChain = writeChain.then(function () { return fn(json); }).catch(function (err) { if (api.onStorageError) api.onStorageError(err); });
+    return writeChain;
+  }
+  function save() { if (!persistFn) return; clearTimeout(saveT); saveT = setTimeout(flush, 100); }
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', function () { if (document.hidden) flush(); });
 
@@ -339,10 +366,10 @@
     if (!d || typeof d !== 'object' || !Array.isArray(d.plan) || typeof d.logs !== 'object') throw new Error('bad file');
     S = Object.assign(def(), d); normalise(); ensureDays(); flush();
   }
-  function reset() { S = def(); flush(); }
 
-  window.Store = {
-    get: function () { return S; }, load: load, save: save, flush: flush, reset: reset,
+  var api = window.Store = {
+    get: function () { return S; }, save: save, flush: flush,
+    attach: attach, detach: detach, replace: replace, readLegacy: readLegacy, dropLegacy: dropLegacy, onStorageError: null,
     key: key, parse: parse, addDays: addDays, diffDays: diffDays, wd: wd, todayKey: todayKey,
     weekStart: weekStart, setPref: function (k, v) { S[k] = v; save(); },
     weekIdx: weekIdx, effReps: effReps, courseState: courseState,

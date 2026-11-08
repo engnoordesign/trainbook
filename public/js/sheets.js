@@ -144,7 +144,7 @@
     var seg = function (act, cur, items) {
       return '<div class="seg sm">' + items.map(function (x) { return '<button type="button" class="' + (String(cur) === String(x[0]) ? 'on' : '') + '" data-act="' + act + '" data-v="' + x[0] + '">' + esc(x[1]) + '</button>'; }).join('') + '</div>';
     };
-    var h = UI.sheetHead(t('set.title')) + '<div class="sheet-b">' +
+    var h = UI.sheetHead(t('set.title')) + '<div class="sheet-b">' + Account.settingsHtml() +
       '<div class="fld"><span>' + ic('globe', 16) + esc(t('set.language')) + '</span>' + seg('setLang', lang, [['ar', 'العربية'], ['en', 'English']]) + '</div>' +
       '<div class="fld"><span>' + ic('sun', 16) + esc(t('set.theme')) + '</span>' + seg('setTheme', S.theme, [['auto', t('set.auto')], ['light', t('set.light')], ['dark', t('set.dark')]]) + '</div>' +
       '<div class="fld"><span>' + ic('calendar', 16) + esc(t('set.weekStart')) + '</span>' + seg('setWeek', ws, [[6, UI.weekdayName(6)], [0, UI.weekdayName(0)], [1, UI.weekdayName(1)]]) + '</div>' +
@@ -160,7 +160,7 @@
         '<button type="button" class="btn" data-act="export">' + ic('download', 18) + esc(t('set.export')) + '</button>' +
         '<label class="btn">' + ic('upload', 18) + esc(t('set.import')) + '<input id="imp-file" type="file" accept="application/json,.json" hidden></label></div></div>' +
       '<div class="fld"><span>' + ic('refresh', 16) + esc(t('set.update')) + '</span><div class="row-btns"><button type="button" class="btn" data-act="checkUpdate">' + esc(t('set.checkUpdate')) + '</button></div></div>' +
-      '<div class="fld"><span>' + ic('trash', 16) + esc(t('set.danger')) + '</span><div class="row-btns"><button type="button" class="btn danger-ghost" data-act="resetAll">' + esc(t('set.reset')) + '</button></div></div>' +
+      Account.dangerHtml() +
       '<p class="muted sm center about">TrainBook v' + esc(App.VERSION) + ' (' + esc(App.BUILD) + ') · ' + esc(t('set.local')) + '</p></div>';
     return h;
   }

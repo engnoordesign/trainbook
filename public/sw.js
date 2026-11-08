@@ -9,7 +9,7 @@ const CACHE = 'trainbook-' + BUILD;
 const ASSETS = [
   './', 'index.html', 'manifest.webmanifest', 'favicon.svg',
   'css/app.css',
-  'js/icons.js', 'js/i18n.js', 'js/data.js', 'js/qr.js', 'js/store.js', 'js/timer.js', 'js/ui-core.js', 'js/views.js', 'js/sheets.js', 'js/app.js',
+  'js/icons.js', 'js/i18n.js', 'js/data.js', 'js/qr.js', 'js/vault.js', 'js/store.js', 'js/timer.js', 'js/ui-core.js', 'js/views.js', 'js/sheets.js', 'js/auth.js', 'js/account.js', 'js/app.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png'
 ];
 
