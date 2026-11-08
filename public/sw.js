@@ -1,11 +1,16 @@
 /* TrainBook service worker.
  * The BUILD constant below is stamped automatically by scripts/stamp.js (Docker build / Cloudflare build command).
- *  - "dev" (unstamped)  -> network first (nice while developing)
- *  - any other value    -> everything is precached under a versioned cache = full offline support,
- *                          and a new build shows the in-app "update ready" prompt.
- */
+ *  - stamped build   -> everything is precached under a versioned cache and served cache-first = instant loads and
+ *                       full offline support; a new build shows the in-app "update ready" prompt.
+ *  - "dev" (unstamped, e.g. a deploy where the build command did not run)
+ *                    -> network first, and every response is saved, so it is always fresh online and still opens offline.
+ *
+ * Why responses are "cleaned" before they are cached: hosts such as Cloudflare answer /index.html with a redirect to /.
+ * A response that went through a redirect (response.redirected) can NOT be used to answer a page navigation - the browser
+ * shows an error page instead. Re-wrapping it drops the flag. */
 const BUILD = 'dev';
 const CACHE = 'trainbook-' + BUILD;
+const STAMPED = BUILD !== 'dev';
 const ASSETS = [
   './', 'index.html', 'manifest.webmanifest', 'favicon.svg',
   'css/app.css',
@@ -13,9 +18,25 @@ const ASSETS = [
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png'
 ];
 
+/** A copy of the response that never carries the "redirected" flag. */
+function clean(res) {
+  if (!res.redirected) return Promise.resolve(res);
+  return res.blob().then((body) => new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers }));
+}
+/** Save a response (pass a clone). Only successful same-origin responses are kept. */
+function store(req, res) {
+  if (!res.ok || res.type !== 'basic') return Promise.resolve();
+  return caches.open(CACHE).then((c) => clean(res).then((r) => c.put(req, r)));
+}
+
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE).then((c) => Promise.all(ASSETS.map((u) => c.add(new Request(u, { cache: 'reload' })))))
+    caches.open(CACHE).then((c) => Promise.all(ASSETS.map((u) =>
+      fetch(new Request(u, { cache: 'reload' })).then((res) => {
+        if (!res.ok) throw new Error('precache failed: ' + u + ' (' + res.status + ')');
+        return clean(res).then((r) => c.put(u, r));
+      })
+    )))
   );
 });
 
@@ -34,25 +55,14 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
-  const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;
+  if (new URL(req.url).origin !== self.location.origin) return;
 
-  if (BUILD === 'dev') {
-    e.respondWith(fetch(req).catch(() => caches.match(req, { ignoreSearch: true })));
-    return;
-  }
+  const nav = req.mode === 'navigate';
+  /* the saved copy; for a page load the app shell is the fallback (hash routes all share one page) */
+  const cached = () => caches.match(req, { ignoreSearch: true }).then((hit) => hit || (nav ? caches.match('./') : undefined));
+  const network = () => fetch(req).then((res) => { e.waitUntil(store(req, res.clone())); return res; });
 
-  if (req.mode === 'navigate') {
-    e.respondWith(caches.match('index.html').then((r) => r || fetch(req)));
-    return;
-  }
-  e.respondWith(
-    caches.match(req, { ignoreSearch: true }).then((hit) => {
-      if (hit) return hit;
-      return fetch(req).then((res) => {
-        if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
-        return res;
-      });
-    })
-  );
+  e.respondWith(STAMPED
+    ? cached().then((hit) => hit || network())
+    : network().catch(() => cached().then((hit) => hit || Response.error())));
 });

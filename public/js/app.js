@@ -130,7 +130,9 @@
   }
   function registerSW() {
     if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
-    if (BUILD === 'dev') {                          // unstamped (development) build: no offline cache, and clear any leftover worker
+    /* While developing on this computer there is no offline cache (it only causes stale pages), and any leftover worker is removed.
+       On a real address the worker always runs: a stamped build precaches everything, an unstamped one is network-first but still opens offline. */
+    if (BUILD === 'dev' && /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/.test(location.hostname)) {
       navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.unregister(); }); }).catch(function () { });
       return;
     }

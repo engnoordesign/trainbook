@@ -114,7 +114,7 @@ scripts/                serve.js · check.js · stamp.js · make-icons.js · upd
 Dockerfile  nginx.conf  docker-compose.yml  wrangler.jsonc
 ```
 
-Handy commands: `npm test` (encryption tests: wrong password, tampering, recovery, password change), `npm run check` (validates courses + translations + offline list), `npm run icons` (regenerates PNG icons), `npm run build` (stamps the build id).
+Handy commands: `npm test` (encryption tests: wrong password, tampering, recovery, password change; plus the offline/service-worker tests, which model Cloudflare redirecting `/index.html`), `npm run check` (validates courses + translations + offline list), `npm run icons` (regenerates PNG icons), `npm run build` (stamps the build id).
 
 ### Add your own premade course
 

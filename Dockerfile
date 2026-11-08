@@ -5,7 +5,7 @@ FROM node:22-alpine AS build
 WORKDIR /src
 COPY scripts ./scripts
 COPY public ./public
-RUN node scripts/check.js && node scripts/stamp.js
+RUN node scripts/check.js && node scripts/sw-test.js && node scripts/stamp.js
 
 # ---- stage 2: tiny static web server, runs as a non-root user on port 8080 ----
 FROM nginxinc/nginx-unprivileged:1.27-alpine
