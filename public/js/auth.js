@@ -3,7 +3,12 @@
    Several people can share one device, each behind their own username and password. A profile's data is encrypted
    in the browser with a key that only its password (or its recovery key) can open, so a locked profile is just
    ciphertext, even in the browser's developer tools. Keys live in memory (and this tab's sessionStorage) only while a
-   profile is unlocked. Same design as Ledgerly's local profiles. */
+   profile is unlocked.
+
+   Accounts are global when the site has an account service (the Cloudflare Worker, or `node scripts/serve.js`): the
+   encrypted data is also kept on the server, so you can sign in from any device with your username and password
+   ("Sign in from another device"). The server never sees the password, the keys or the data in the clear - see vault.js.
+   Without a server (plain static hosting) profiles simply stay on the device. */
 (() => {
   const X = window.Auth = {};
   const K = { PROFILES: 'trainbook.profiles.v1', DATA: 'trainbook.data.', REMEMBER: 'trainbook.rem.', SESSION: 'trainbook.session', DEV: 'trainbook.dev' };
@@ -26,8 +31,10 @@
   const normUser = s => String(s || '').normalize('NFKC').trim();
   const at = u => '<bdi dir="ltr">@' + esc(u) + '</bdi>';
   const needPassword = pw => { if (String(pw || '').length < 8) throw new UserError(t('au.errPassLen')); };
+  const nat = v => { v = Math.round(+v); return isFinite(v) && v > 0 ? v : 0; };
 
-  let profiles = [], last = null, cur = null, dk = null, prefs = {};
+  /* cur = the open profile, dk = its data key, sec = its login secret for the account service (both only in memory) */
+  let profiles = [], last = null, cur = null, dk = null, sec = null, prefs = {};
 
   /* ---------- device preferences (language / theme before anyone signs in) ---------- */
   function readDev() {
@@ -48,7 +55,8 @@
       id: p.id, username: p.username.slice(0, 32), name: String(p.name || p.username).slice(0, 40),
       color: /^#[0-9a-f]{6}$/i.test(p.color) ? p.color : PALETTE[0], salt: p.salt.slice(0, 64),
       iter: isFinite(it) ? Math.max(100000, Math.min(5000000, it)) : 600000, pwWrap: p.pwWrap, recWrap: p.recWrap,
-      createdAt: +p.createdAt || 0, autoLock: AUTOLOCK.indexOf(+p.autoLock) >= 0 ? +p.autoLock : 15, remember: !!p.remember
+      createdAt: +p.createdAt || 0, autoLock: AUTOLOCK.indexOf(+p.autoLock) >= 0 ? +p.autoLock : 15, remember: !!p.remember,
+      sync: p.sync && p.sync.on ? { on: true, v: nat(p.sync.v), mv: nat(p.sync.mv), dirty: !!p.sync.dirty, at: +p.sync.at || 0, h: /^[a-z0-9]{1,16}$/.test(p.sync.h) ? p.sync.h : '', stale: !!p.sync.stale } : null
     };
   };
   const loadList = () => {
@@ -61,82 +69,192 @@
   const byId = id => profiles.find(p => p.id === id);
   X.list = () => profiles.slice();
   X.profile = () => cur;
+  X.persistProfiles = saveList;
+  X.isSynced = p => !!((p || cur) && (p || cur).sync && (p || cur).sync.on);
   X.at = at;
 
   /* ---------- unlocked session ---------- */
-  const writeSession = () => ss.set(K.SESSION, JSON.stringify({ pid: cur.id, dk: Vault.b64(dk) }));
+  const writeSession = () => ss.set(K.SESSION, JSON.stringify({ pid: cur.id, dk: Vault.b64(dk), auth: sec }));
   const readSession = () => { try { return JSON.parse(ss.get(K.SESSION)); } catch (e) { return null; } };
-  const saverFor = (p, key) => async json => { localStorage.setItem(K.DATA + p.id, await Vault.seal(key, json)); };
+  const saverFor = (p, key) => async json => {
+    const sealed = await Vault.seal(key, json);
+    localStorage.setItem(K.DATA + p.id, sealed);
+    Sync.localWritten(json);
+  };
 
-  async function enter(p, key, opts = {}) {
+  async function enter(p, key, secret, opts = {}) {
     const sealed = ls.get(K.DATA + p.id);
     let state = null;
     if (sealed) { try { state = JSON.parse(await Vault.open(key, sealed)); } catch (e) { throw new UserError(t('au.errData')); } }
-    cur = p; dk = key;
+    cur = p; dk = key; sec = secret || null;
     Store.attach(state, saverFor(p, key));
     const S = Store.get();
     if (prefs.lang) S.lang = prefs.lang;               // a language or theme picked on the lock screen carries over
     if (prefs.theme) S.theme = prefs.theme;
     if (!S.lang) S.lang = X.deviceLang();
+    if (!S.name) S.name = p.name;
     prefs = {};
     last = p.id; saveList(); writeSession();
     if (opts.remember) { try { await X.remember(); } catch (e) { UI.toast(t('au.errRemember'), { ms: 9000 }); } }
     if (!sealed) await Store.flush();                  // a brand-new profile has its encrypted copy before the app opens
     hide(); touch(); startIdle();
     App.afterUnlock();
+    Sync.attach({ dk: key, auth: secret });            // global accounts: bring in changes from other devices, send ours
   }
 
+  /** Signed in on another device after changing the password there: the server accepts the new one, so adopt it here. */
+  async function passwordChangedElsewhere(p, password) {
+    try {
+      const j = await Sync.remoteLogin({ username: p.username, password });
+      const u = await Vault.unlock(password, j.meta);
+      Object.assign(p, { salt: j.meta.salt, iter: j.meta.iter, pwWrap: j.meta.pwWrap, recWrap: j.meta.recWrap }); p.sync.mv = j.mv; p.sync.stale = false; saveList();
+      return u;
+    } catch (e) { return null; }
+  }
   X.login = async (p, password, remember) => {
-    let key;
-    try { key = await Vault.unlock(password, p); } catch (e) { throw new UserError(t('au.errWrong'), 'WRONG'); }
-    await enter(p, key, { remember });
+    let u;
+    if (p.sync && p.sync.stale) {
+      /* the password was changed on another device: this device must check with the server, so the old password no longer works here */
+      try {
+        const j = await Sync.remoteLogin({ username: p.username, password });
+        u = await Vault.unlock(password, j.meta);
+        Object.assign(p, { salt: j.meta.salt, iter: j.meta.iter, pwWrap: j.meta.pwWrap, recWrap: j.meta.recWrap }); p.sync.mv = j.mv; p.sync.stale = false; saveList();
+      } catch (e) {
+        if (e && e.code === 'NOACCOUNT') { p.sync.stale = false; saveList(); }       // the account is gone from the server: the data on this device stays usable
+        else if (e instanceof UserError) throw e;
+        else throw new UserError(t('au.errWrong'), 'WRONG');
+      }
+    }
+    if (!u) {
+      try { u = await Vault.unlock(password, p); }
+      catch (e) {
+        u = X.isSynced(p) ? await passwordChangedElsewhere(p, password) : null;
+        if (!u) throw new UserError(t('au.errWrong'), 'WRONG');
+      }
+    }
+    await enter(p, u.dk, u.auth, { remember });
   };
 
-  X.create = async ({ name, username, password, adopt }) => {
+  /** Create a profile. When the site has an account service the account is created there too (so the name is global). */
+  X.create = async ({ name, username, password, adopt, deviceOnly, invite }) => {
     username = normUser(username); name = String(name || '').trim().slice(0, 40) || username;
     if (!USER_RE.test(username)) throw new UserError(t('au.errUser'));
     if (profiles.some(p => p.username.toLowerCase() === username.toLowerCase())) throw new UserError(t('au.errUserTaken'));
     needPassword(password);
+    const info = deviceOnly ? { available: false } : await Sync.info(true);
+    const global = !!(info.available && info.signup !== 'closed');
     const acct = await Vault.createAccount(password);
-    const p = { id: uid(), username, name, color: PALETTE[profiles.length % PALETTE.length], salt: acct.salt, iter: acct.iter, pwWrap: acct.pwWrap, recWrap: acct.recWrap, createdAt: Date.now(), autoLock: 15, remember: false };
     const legacy = adopt ? Store.readLegacy() : null;
-    const first = legacy || { v: 1 };
-    localStorage.setItem(K.DATA + p.id, await Vault.seal(acct.dk, JSON.stringify(first)));
+    const first = Object.assign({ v: 1 }, legacy || {}); if (!first.name) first.name = name;
+    const sealed = await Vault.seal(acct.dk, JSON.stringify(first));
+    const p = { id: uid(), username, name, color: PALETTE[profiles.length % PALETTE.length], salt: acct.salt, iter: acct.iter, pwWrap: acct.pwWrap, recWrap: acct.recWrap, createdAt: Date.now(), autoLock: 15, remember: false, sync: null };
+    if (global) {                                      // the server decides if the name is free, before anything is stored here
+      await Sync.signup({ username, auth: acct.auth, recAuth: acct.recAuth, meta: { salt: acct.salt, iter: acct.iter, pwWrap: acct.pwWrap, recWrap: acct.recWrap }, blob: sealed, invite: invite || undefined });
+      p.sync = { on: true, v: 1, mv: 1, dirty: false, at: Date.now() };
+    }
+    localStorage.setItem(K.DATA + p.id, sealed);
     profiles.push(p); saveList();
-    return { p, dk: acct.dk, text: Vault.formatRecovery(acct.recovery), adopted: !!legacy };
+    return { p, dk: acct.dk, auth: acct.auth, text: Vault.formatRecovery(acct.recovery), adopted: !!legacy, synced: global };
   };
 
-  /** Forgot password: the recovery key opens the same data key, then a new password wraps it again. */
+  /** Put an account that lives on the server onto this device (new device, or the password changed elsewhere). */
+  async function installRemote({ username, meta, blob, version, mv }, key) {
+    let state;
+    try { state = JSON.parse(await Vault.open(key, blob)); } catch (e) { throw new UserError(t('au.errData')); }
+    let p = profiles.find(x => x.username.toLowerCase() === username.toLowerCase());
+    if (p && !X.isSynced(p)) throw new UserError(t('sy.errLocalClash'));
+    const dirty = !!(p && p.sync.dirty);               // unsent changes on this device are kept; the engine merges them with the server copy
+    if (!p) {
+      p = { id: uid(), username, name: String(state.name || username).slice(0, 40), color: PALETTE[profiles.length % PALETTE.length], createdAt: Date.now(), autoLock: 15, remember: false };
+      profiles.push(p);
+    }
+    Object.assign(p, { salt: meta.salt, iter: meta.iter, pwWrap: meta.pwWrap, recWrap: meta.recWrap });
+    p.sync = { on: true, v: dirty ? p.sync.v : version, mv, dirty, at: Date.now(), h: dirty ? p.sync.h : '', stale: false };
+    if (!dirty) localStorage.setItem(K.DATA + p.id, blob);   // already sealed with the account's data key
+    saveList();
+    return p;
+  }
+  /** "Sign in from another device": username + password -> the account's data is downloaded and opened here. */
+  X.remoteSignIn = async ({ username, password, remember }) => {
+    username = normUser(username);
+    if (!USER_RE.test(username)) throw new UserError(t('au.errUser'));
+    const j = await Sync.remoteLogin({ username, password });
+    let u; try { u = await Vault.unlock(password, j.meta); } catch (e) { throw new UserError(t('au.errData')); }
+    const p = await installRemote({ username, meta: j.meta, blob: j.blob, version: j.version, mv: j.mv }, u.dk);
+    await enter(p, u.dk, u.auth, { remember });
+  };
+  /** Forgot the password and not signed in anywhere: the recovery key sets a new one on the server. */
+  X.remoteRecover = async ({ username, recovery, newPassword, remember }) => {
+    username = normUser(username);
+    if (!USER_RE.test(username)) throw new UserError(t('au.errUser'));
+    const bytes = Vault.parseRecovery(recovery);
+    if (!bytes) throw new UserError(t('au.errRecFmt'));
+    needPassword(newPassword);
+    const rc = await Vault.fromRecovery(bytes);
+    let o;
+    try { o = await Sync.recoverOpen(username, rc.auth); } catch (e) { throw e.code === 'WRONG' ? new UserError(t('au.errRecMatch')) : e; }
+    let u; try { u = await Vault.unlockWithRecovery(bytes, o.meta.recWrap); } catch (e) { throw new UserError(t('au.errRecMatch')); }
+    const re = await Vault.rewrap(newPassword, u.dk), meta = { salt: re.salt, iter: re.iter, pwWrap: re.pwWrap };
+    const r = await Sync.recoverSet(username, rc.auth, re.auth, meta);
+    const p = await installRemote({ username, meta: Object.assign({}, meta, { recWrap: o.meta.recWrap }), blob: o.blob, version: o.version, mv: r.mv }, u.dk);
+    await enter(p, u.dk, re.auth, { remember });
+  };
+
+  /** Forgot password on a profile that is on this device. For a global account the server must agree, so it goes there. */
   X.recover = async (p, recoveryText, newPassword) => {
+    if (X.isSynced(p)) return X.remoteRecover({ username: p.username, recovery: recoveryText, newPassword });
     const bytes = Vault.parseRecovery(recoveryText);
     if (!bytes) throw new UserError(t('au.errRecFmt'));
     needPassword(newPassword);
-    let key;
-    try { key = await Vault.unlockWithRecovery(bytes, p.recWrap); } catch (e) { throw new UserError(t('au.errRecMatch')); }
-    const re = await Vault.rewrap(newPassword, key);
+    let u;
+    try { u = await Vault.unlockWithRecovery(bytes, p.recWrap); } catch (e) { throw new UserError(t('au.errRecMatch')); }
+    const re = await Vault.rewrap(newPassword, u.dk);
     Object.assign(p, { salt: re.salt, iter: re.iter, pwWrap: re.pwWrap }); saveList();
-    await enter(p, key);
+    await enter(p, u.dk, re.auth);
   };
 
   /* ---------- account settings (signed-in) ---------- */
-  const confirmCurrent = async password => { try { await Vault.unlock(password, cur); } catch (e) { throw new UserError(t('au.errCurrent')); } };
+  const confirmCurrent = async password => { try { return await Vault.unlock(password, cur); } catch (e) { throw new UserError(t('au.errCurrent')); } };
   X.changePassword = async (current, next) => {
     needPassword(next);
-    await confirmCurrent(current);
-    Object.assign(cur, await Vault.rewrap(next, dk)); saveList();
+    const cu = await confirmCurrent(current);
+    const re = await Vault.rewrap(next, dk), meta = { salt: re.salt, iter: re.iter, pwWrap: re.pwWrap };
+    if (X.isSynced()) cur.sync.mv = (await Sync.changePassword(cur.username, cu.auth, re.auth, meta)).mv;   // server first, so both always agree
+    Object.assign(cur, meta); sec = re.auth; saveList(); writeSession(); Sync.setAuth(re.auth);
+    if (cur.remember) { try { await X.remember(); } catch (e) { X.forget(cur); } }
   };
   /** Returns the new recovery key text. The old key stops working. */
   X.newRecoveryKey = async password => {
-    await confirmCurrent(password);
+    const cu = await confirmCurrent(password);
     const r = await Vault.newRecovery(dk);
+    if (X.isSynced()) cur.sync.mv = (await Sync.setRecovery(cur.username, cu.auth, r.recAuth, r.recWrap)).mv;
     cur.recWrap = r.recWrap; saveList();
     return Vault.formatRecovery(r.recovery);
   };
-  X.rename = name => { cur.name = String(name || '').trim().slice(0, 40) || cur.username; saveList(); };
+  /** Put a device-only profile on the server so it can be used from any device. A NEW recovery key is made (and returned). */
+  X.enableSync = async (password, invite) => {
+    const info = await Sync.info(true);
+    if (!info.available) throw new UserError(t('sy.errNoServer'));
+    if (info.signup === 'closed') throw new UserError(t('sy.errClosed'));
+    const cu = await confirmCurrent(password);
+    const nr = await Vault.newRecovery(dk);
+    const sealed = await Vault.seal(dk, JSON.stringify(Store.get()));
+    await Sync.signup({ username: cur.username, auth: cu.auth, recAuth: nr.recAuth, meta: { salt: cur.salt, iter: cur.iter, pwWrap: cur.pwWrap, recWrap: nr.recWrap }, blob: sealed, invite: invite || undefined });
+    cur.recWrap = nr.recWrap; cur.sync = { on: true, v: 1, mv: 1, dirty: false, at: Date.now() };
+    sec = cu.auth; saveList(); writeSession();
+    Sync.attach({ dk, auth: sec });
+    return Vault.formatRecovery(nr.recovery);
+  };
+  X.rename = name => { cur.name = String(name || '').trim().slice(0, 40) || cur.username; Store.get().name = cur.name; Store.save(); saveList(); };
   X.setAutoLock = minutes => { if (AUTOLOCK.indexOf(+minutes) >= 0) { cur.autoLock = +minutes; saveList(); } };
-  X.removeProfile = async password => {
-    await confirmCurrent(password);
+  /** alsoServer: also delete the account from the server (other devices lose it). Otherwise only this device forgets it. */
+  X.removeProfile = async (password, alsoServer) => {
+    const cu = await confirmCurrent(password);
     const p = cur;
+    if (alsoServer && X.isSynced(p)) {
+      Sync.stop();
+      try { await Sync.deleteRemote(p.username, cu.auth); } catch (e) { Sync.attach({ dk, auth: sec }); throw e; }
+    }
     await doLock(true);
     ls.del(K.DATA + p.id); ls.del(K.REMEMBER + p.id);
     profiles = profiles.filter(x => x.id !== p.id); if (last === p.id) last = null; saveList();
@@ -144,8 +262,8 @@
   };
 
   /* ---------- stay signed in on this device ----------
-     The data key is sealed with a device key kept in IndexedDB as a non-extractable CryptoKey, so the saved sign-in
-     cannot be lifted out of storage and used elsewhere. Opt-in per profile; removed by signing out. */
+     The data key (and login secret) are sealed with a device key kept in IndexedDB as a non-extractable CryptoKey, so the
+     saved sign-in cannot be lifted out of storage and used elsewhere. Opt-in per profile; removed by signing out. */
   const idb = {
     db: () => new Promise((res, rej) => { const r = indexedDB.open('trainbook', 1); r.onupgradeneeded = () => r.result.createObjectStore('keys'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }),
     get: async k => { const db = await idb.db(); return new Promise((res, rej) => { const q = db.transaction('keys', 'readonly').objectStore('keys').get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => rej(q.error); }); },
@@ -155,7 +273,7 @@
   X.canRemember = () => !!(window.indexedDB && Vault.available());
   X.remember = async () => {
     const key = await deviceKey(true);
-    localStorage.setItem(K.REMEMBER + cur.id, await Vault.sealWithKey(key, JSON.stringify({ dk: Vault.b64(dk) })));
+    localStorage.setItem(K.REMEMBER + cur.id, await Vault.sealWithKey(key, JSON.stringify({ dk: Vault.b64(dk), auth: sec })));
     cur.remember = true; saveList();
   };
   X.forget = p => {
@@ -167,7 +285,7 @@
     const sealed = ls.get(K.REMEMBER + p.id), key = sealed && await deviceKey(false);
     if (!sealed || !key) throw new Error('NO_REMEMBER');
     const o = JSON.parse(await Vault.openWithKey(key, sealed));
-    await enter(p, Vault.unb64(o.dk));
+    await enter(p, Vault.unb64(o.dk), o.auth || null);
   };
 
   /* ---------- lock, idle ---------- */
@@ -188,8 +306,9 @@
     if (!cur) return;
     if (forget) X.forget(cur);
     try { await Store.flush(); } catch (e) { /* surfaced by onStorageError */ }
+    try { await Sync.detach(); } catch (e) { /* offline: it syncs next time */ }
     clearInterval(idleTimer); ss.del(K.SESSION);
-    cur = dk = null;
+    cur = dk = sec = null;
     Store.detach();
     UI.closeSheet(true);
     ['view', 'top', 'nav', 'pill', 'toast-root'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });   // nothing personal stays in the page
@@ -215,7 +334,7 @@
     if (!Vault.available()) return show('nocrypto');
     loadList();
     const s = readSession(), p = s && byId(s.pid);
-    if (p) { try { await enter(p, Vault.unb64(s.dk)); return; } catch (e) { ss.del(K.SESSION); } }
+    if (p) { try { await enter(p, Vault.unb64(s.dk), s.auth || null); return; } catch (e) { ss.del(K.SESSION); } }
     const lp = byId(last);                              // a profile this device was told to keep signed in
     if (lp && lp.remember) { try { await X.resume(lp); return; } catch (e) { X.forget(lp); } }
     showStart();
@@ -267,14 +386,17 @@
   const link = (act, label, extra) => '<button type="button" class="link" data-au="' + act + '"' + (extra || '') + '>' + esc(label) + '</button>';
   const err = () => '<div class="form-error" role="alert" hidden></div>';
   const stay = () => X.canRemember() ? '<label class="check stay"><input type="checkbox" name="remember" checked><span>' + esc(t('au.keepSigned')) + '</span></label>' : '';
+  const field = (id, name, label, extra) => '<div class="fld"><label for="' + id + '">' + esc(label) + '</label><input type="text" id="' + id + '" name="' + name + '" ' + (extra || '') + '></div>';
+  const userField = (autofocus) => field('au-user', 'username', t('au.username'), 'autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="32" required' + (autofocus ? ' autofocus' : ''));
 
   const views = {
     nocrypto: () => '<div class="keyscreen">' + ic('lock', 28) + '<h1>' + esc(t('au.noCrypto')) + '</h1><p class="sub">' + esc(t('au.noCryptoSub')) + '</p></div>',
 
     pick: () => '<h1>' + esc(t('au.pickTitle')) + '</h1><p class="sub">' + esc(t('au.pickSub')) + '</p><div class="profile-grid">' +
       profiles.map(p => '<button type="button" class="ptile" data-au="select" data-id="' + p.id + '">' + X.avatar(p, 60) + '<b>' + esc(p.name) + '</b><small>' + at(p.username) + '</small>' +
-        (p.remember ? '<span class="pill-sm">' + esc(t('au.signedIn')) + '</span>' : '') + '</button>').join('') +
-      '<button type="button" class="ptile add" data-au="new"><span class="avatar plus" style="--s:60px">' + ic('plus', 24) + '</span><b>' + esc(t('au.add')) + '</b></button></div>',
+        (p.remember ? '<span class="pill-sm">' + esc(t('au.signedIn')) + '</span>' : '') + (p.sync ? '<span class="pill-sm info">' + esc(t('sy.synced')) + '</span>' : '') + '</button>').join('') +
+      '<button type="button" class="ptile add" data-au="new"><span class="avatar plus" style="--s:60px">' + ic('plus', 24) + '</span><b>' + esc(t('au.add')) + '</b></button></div>' +
+      links(link('remote', t('sy.signInOther'))),
 
     login: () => {
       const p = ui.ctx.p;
@@ -282,13 +404,16 @@
         '<input type="text" name="username" value="' + esc(p.username) + '" autocomplete="username" readonly tabindex="-1" class="sr-only" aria-hidden="true">' +
         '<div class="fld"><label for="au-pass">' + esc(t('au.password')) + '</label>' + X.pwField('au-pass', 'password', 'current-password', true) + '</div>' + err() + stay() +
         '<button class="btn primary wide" type="submit">' + ic('lock', 16) + '<span>' + esc(t('au.unlock')) + '</span></button>' +
-        links(link('forgot', t('au.forgot'), ' data-id="' + p.id + '"'), link('pick', profiles.length > 1 ? t('au.switch') : t('au.add'), profiles.length > 1 ? '' : ' data-new="1"')) + '</form>';
+        links(link('forgot', t('au.forgot'), ' data-id="' + p.id + '"'), link('pick', profiles.length > 1 ? t('au.switch') : t('au.add'), profiles.length > 1 ? '' : ' data-new="1"'), link('remote', t('sy.signInOther'))) + '</form>';
     },
 
     create: () => {
-      const first = !profiles.length, legacy = Store.readLegacy();
+      const first = !profiles.length, legacy = Store.readLegacy(), info = ui.info;
+      const canSync = !!(info && info.available && info.signup !== 'closed');
+      const note = !info ? '' : !info.available ? t('sy.noteLocal') : info.signup === 'closed' ? t('sy.noteClosed') : t('sy.noteGlobal');
       return '<form id="auf" data-au-submit="create" novalidate><h1>' + esc(first ? t('au.createTitleFirst') : t('au.createTitle')) + '</h1>' +
         '<p class="sub">' + esc(first ? t('au.createSub') : t('au.createSubMore')) + '</p>' +
+        (note ? '<div class="notice ' + (canSync ? 'ok' : 'warn') + '">' + ic(canSync ? 'check' : 'info', 16) + '<span>' + esc(note) + '</span></div>' : '') +
         (legacy ? '<div class="notice ok">' + ic('check', 16) + '<label class="check"><input type="checkbox" name="adopt" checked><span>' +
           esc(t('au.adopt', { n: legacy.plan.length, d: Object.keys(legacy.logs).length })) + '</span></label></div>' : '') +
         '<div class="row2"><div class="fld"><label for="au-name">' + esc(t('au.name')) + '</label><input type="text" id="au-name" name="name" autocomplete="name" maxlength="40"></div>' +
@@ -297,9 +422,11 @@
         '<button type="button" class="icon-btn xs" data-au="peek" data-for="au-pass" aria-label="' + esc(t('au.peek')) + '">' + ic('eye', 16) + '</button></div>' +
         '<div class="strength" id="au-str" data-s="0"><i></i><i></i><i></i><i></i><span>' + esc(t('au.s0')) + '</span></div></div>' +
         '<div class="fld"><label for="au-pass2">' + esc(t('au.confirm')) + '</label>' + X.pwField('au-pass2', 'password2', 'new-password') + '</div>' +
+        (info && info.available && info.signup === 'invite' ? field('au-invite', 'invite', t('sy.inviteCode'), 'autocomplete="off" autocapitalize="off" spellcheck="false"') : '') +
         '<p class="muted sm">' + esc(t('au.noOne')) + '</p>' + err() + stay() +
+        (canSync ? '<label class="check"><input type="checkbox" name="deviceOnly"><span>' + esc(t('sy.deviceOnly')) + '</span></label>' : '') +
         '<button class="btn primary wide" type="submit">' + esc(t('au.createBtn')) + '</button>' +
-        links(profiles.length ? link('back', t('au.back')) : '') + '</form>';
+        links(profiles.length ? link('back', t('au.back')) : '', link('remote', t('sy.haveAccount'))) + '</form>';
     },
 
     key: () => '<div class="keyscreen">' + ic('key', 28) + '<h1>' + esc(t('au.keyTitle')) + '</h1><p class="sub">' + esc(t('au.keySub')) + '</p>' +
@@ -316,7 +443,20 @@
         '<div class="fld"><label for="au-pass">' + esc(t('au.newPass')) + '</label>' + X.pwField('au-pass', 'password', 'new-password') + '</div>' +
         '<div class="fld"><label for="au-pass2">' + esc(t('au.confirm')) + '</label>' + X.pwField('au-pass2', 'password2', 'new-password') + '</div>' + err() +
         '<button class="btn primary wide" type="submit">' + esc(t('au.resetBtn')) + '</button>' + links(link('select', t('au.back'), ' data-id="' + p.id + '"')) + '</form>';
-    }
+    },
+
+    /* sign in with an account that is not on this device yet */
+    remote: () => '<form id="auf" data-au-submit="remote" novalidate>' + ic('globe', 28) + '<h1>' + esc(t('sy.signInOther')) + '</h1><p class="sub">' + esc(t('sy.signInOtherSub')) + '</p>' +
+      userField(true) + '<div class="fld"><label for="au-pass">' + esc(t('au.password')) + '</label>' + X.pwField('au-pass', 'password', 'current-password') + '</div>' + err() + stay() +
+      '<button class="btn primary wide" type="submit">' + ic('globe', 16) + '<span>' + esc(t('sy.signIn')) + '</span></button>' +
+      links(link('remoteForgot', t('au.forgot')), profiles.length ? link('back', t('au.back')) : link('new', t('sy.createInstead'))) + '</form>',
+
+    remoteForgot: () => '<form id="auf" data-au-submit="remoteReset" novalidate>' + ic('key', 28) + '<h1>' + esc(t('au.resetTitle')) + '</h1><p class="sub">' + esc(t('sy.resetRemoteSub')) + '</p>' +
+      userField(true) +
+      '<div class="fld"><label for="au-rec">' + esc(t('au.recKey')) + '</label><input type="text" id="au-rec" name="recovery" class="keyinput" dir="ltr" autocomplete="off" spellcheck="false" placeholder="ABCD-EFGH-IJKL-MNPQ-RSTV-WX" required></div>' +
+      '<div class="fld"><label for="au-pass">' + esc(t('au.newPass')) + '</label>' + X.pwField('au-pass', 'password', 'new-password') + '</div>' +
+      '<div class="fld"><label for="au-pass2">' + esc(t('au.confirm')) + '</label>' + X.pwField('au-pass2', 'password2', 'new-password') + '</div>' + err() + stay() +
+      '<button class="btn primary wide" type="submit">' + esc(t('au.resetBtn')) + '</button>' + links(link('remote', t('au.back'))) + '</form>'
   };
 
   function draw() {
@@ -330,10 +470,13 @@
     const first = el.querySelector('[autofocus]') || el.querySelector('input:not([type=checkbox]):not([type=hidden]):not([readonly])');
     if (first) setTimeout(() => first.focus({ preventScroll: true }), 30);
   }
-  function show(view, ctx) { ui = { view, ctx: ctx || {} }; busy = false; draw(); }
+  function show(view, ctx) {
+    ui = { view, ctx: ctx || {}, info: ui && ui.info }; busy = false; draw();
+    if (view === 'create') Sync.info().then(i => { if (ui.view === 'create' && (!ui.info || ui.info.at !== i.at)) { ui.info = i; draw(); } });
+  }
   function hide() { const el = $('#auth'); el.hidden = true; el.innerHTML = ''; document.body.classList.remove('locked'); $('#app').hidden = false; }
 
-  /* wrong-password throttle: after 5 misses the wait doubles up to a minute */
+  /* wrong-password throttle: after 5 misses the wait doubles up to a minute (the server also throttles global accounts) */
   const fails = {};
   const waitLeft = p => Math.max(0, Math.ceil((((fails[p.id] || {}).until || 0) - Date.now()) / 1000));
 
@@ -347,6 +490,8 @@
     pick: el => (el.dataset.new ? show('create') : show('pick')),
     new: () => show('create'),
     forgot: el => { const p = byId(el.dataset.id); if (p) show('forgot', { p }); },
+    remote: () => show('remote'),
+    remoteForgot: () => show('remoteForgot'),
     peek: el => X.peek(el.dataset.for),
     lang: () => {
       const lang = I18N.lang === 'ar' ? 'en' : 'ar';
@@ -361,8 +506,8 @@
     continue: async el => {
       el.disabled = true;
       const r = ui.ctx;
-      try { await enter(r.p, r.dk, { remember: r.remember }); if (r.adopted) Store.dropLegacy(); }
-      catch (e) { el.disabled = false; UI.toast(e instanceof UserError ? e.message : t('au.errGeneric')); }
+      try { await enter(r.p, r.dk, r.auth, { remember: r.remember }); if (r.adopted) Store.dropLegacy(); }
+      catch (e) { el.disabled = false; UI.toast(e instanceof UserError ? e.message : t('au.errGeneric'), { ms: 6000 }); }
     }
   };
   const AUS = {
@@ -378,13 +523,23 @@
     create: form => X.work(form, async () => {
       const d = form.elements;
       if (d.password.value !== d.password2.value) throw new UserError(t('au.errMismatch'));
-      const r = await X.create({ name: d.name.value, username: d.username.value, password: d.password.value, adopt: d.adopt ? d.adopt.checked : false });
+      const r = await X.create({ name: d.name.value, username: d.username.value, password: d.password.value, adopt: d.adopt ? d.adopt.checked : false,
+        deviceOnly: !!(d.deviceOnly && d.deviceOnly.checked), invite: d.invite ? d.invite.value.trim() : '' });
       show('key', Object.assign(r, { remember: !!(d.remember && d.remember.checked) }));
     }),
     reset: form => X.work(form, async () => {
       const d = form.elements;
       if (d.password.value !== d.password2.value) throw new UserError(t('au.errMismatch'));
       await X.recover(ui.ctx.p, d.recovery.value, d.password.value);
+    }),
+    remote: form => X.work(form, async () => {
+      const d = form.elements;
+      await X.remoteSignIn({ username: d.username.value, password: d.password.value, remember: !!(d.remember && d.remember.checked) });
+    }),
+    remoteReset: form => X.work(form, async () => {
+      const d = form.elements;
+      if (d.password.value !== d.password2.value) throw new UserError(t('au.errMismatch'));
+      await X.remoteRecover({ username: d.username.value, recovery: d.recovery.value, newPassword: d.password.value, remember: !!(d.remember && d.remember.checked) });
     })
   };
 

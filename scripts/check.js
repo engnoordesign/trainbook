@@ -59,7 +59,8 @@ enK.forEach((k) => { if (allSrc.includes("'" + k + "'")) used.add(k); });   // k
 /* dynamic keys: t('hs.' + x), t('cat.' + x), t('lv.' + x), t('st.' + x), t('ck.' + x + 'Desc'), t('nav.' + x), t('tm.ph.' + x) */
 ['hs.rest', 'hs.done', 'hs.partial', 'hs.missed', 'hs.pending', 'st.done', 'st.missed', 'st.partial', 'lv.1', 'lv.2', 'lv.3',
   'ck.course', 'ck.monthly', 'ck.calisthenics', 'ck.courseDesc', 'ck.monthlyDesc', 'ck.calisthenicsDesc',
-  'nav.today', 'nav.course', 'nav.train', 'nav.courses', 'nav.history', 'tm.ph.ready', 'tm.ph.work', 'tm.ph.rest', 'tm.ph.done']
+  'nav.today', 'nav.course', 'nav.train', 'nav.courses', 'nav.history', 'tm.ph.ready', 'tm.ph.work', 'tm.ph.rest', 'tm.ph.done',
+  'sy.st.synced', 'sy.st.syncing', 'sy.st.offline', 'sy.st.auth', 'sy.st.error']
   .concat(Data.CATS.map((c) => 'cat.' + c)).forEach((k) => used.add(k));
 [...used].sort().forEach((k) => { if (!(k in dict.en)) fail('used but not defined: ' + k); });
 if (!errors) ok(enK.length + ' keys in each language, ' + used.size + ' keys referenced');

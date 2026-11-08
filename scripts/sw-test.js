@@ -104,6 +104,7 @@ function runWorker(build) {
   await w.request('/missing'); await w.pending();
   ok(!w.caches[cacheName].has('/missing'), 'error responses (404) are never cached');
   ok(!w.handled(new Req('https://example.com/x.js')), 'cross-origin requests are left alone');
+  ok(!w.handled(new Req('/api/ping')), 'the account service (/api/*) is never intercepted or cached');
   ok(!w.handled(new Req('/x', { method: 'POST' })), 'non-GET requests are left alone');
   w.state.offline = true;
   a = await w.request('/never-seen.png');

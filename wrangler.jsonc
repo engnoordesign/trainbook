@@ -1,11 +1,23 @@
 {
-  // Cloudflare Workers static assets config. Deploy with:  npx wrangler login   then   npx wrangler deploy
+  // Cloudflare Worker: the static app + the account/sync API in one deploy.
+  // Deploy:  npx wrangler login   then   npx wrangler deploy      (or push to Git with Workers Builds connected)
   "name": "trainbook",
+  "main": "src/worker.mjs",
   "compatibility_date": "2026-01-01",
   // stamps a build hash into sw.js so each deploy shows the in-app "update ready" prompt
   "build": { "command": "node scripts/stamp.js" },
   "assets": {
     "directory": "./public",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // only /api/* runs the Worker; every other request is served straight from the static files
+    "run_worker_first": ["/api/*"]
+  },
+  // one SQLite-backed Durable Object per username holds that account's encrypted data (free plan supports this)
+  "durable_objects": { "bindings": [{ "name": "ACCOUNT", "class_name": "Account" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Account"] }],
+  "vars": {
+    // who may create accounts: "open" (anyone), "invite" (needs the INVITE_CODE secret), "closed" (nobody new)
+    "SIGNUP_MODE": "open"
   }
 }

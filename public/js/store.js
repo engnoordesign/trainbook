@@ -17,6 +17,7 @@
       superDates: [],      // specific super days
       superWeekdays: [],   // recurring super weekdays
       shareUrl: '',        // custom address for the "get the app" QR code ('' = this page's address)
+      name: '',            // display name (kept with the data so every device shows the same one)
       lastSeen: null
     };
   }
@@ -42,17 +43,19 @@
      The data of the signed-in profile is saved through `persistFn` (set by auth.js), which encrypts it.
      When nobody is signed in S is an empty placeholder and nothing is saved. */
   var persistFn = null, writeChain = Promise.resolve();
+  var pending = false;      // something changed since the last write (so a flush has a reason to write)
 
   /** Start using a profile's data (raw = parsed JSON from storage, or null for a new profile). */
   function attach(raw, saver) {
     S = Object.assign(def(), raw && typeof raw === 'object' ? raw : {});
     normalise();
     persistFn = saver;
+    pending = !raw;           // a brand-new profile still has to be written once
   }
   /** Stop using the data (locking). Pending changes are written first by flush(). */
-  function detach() { persistFn = null; clearTimeout(saveT); saveT = null; S = def(); }
-  /** Replace the state with data that changed in another tab. */
-  function replace(raw) { S = Object.assign(def(), raw && typeof raw === 'object' ? raw : {}); normalise(); }
+  function detach() { persistFn = null; pending = false; clearTimeout(saveT); saveT = null; S = def(); }
+  /** Replace the state with data from another tab or the server. */
+  function replace(raw) { S = Object.assign(def(), raw && typeof raw === 'object' ? raw : {}); normalise(); pending = true; }
   /** Read the old unencrypted data (pre-profiles versions) without touching the current state, or null. */
   function readLegacy() {
     var keep = S, out = null;
@@ -80,7 +83,8 @@
     return {
       id: e.id, planId: idOk(e.planId) ? e.planId : null, exId: exOk(e.exId), title: String(e.title || '').slice(0, 60), cat: catOk(e.cat),
       sets: num(e.sets, 1, 20, 1), reps: num(e.reps, 1, 999, 10), unit: e.unit === 'sec' ? 'sec' : 'reps',
-      status: ['done', 'missed', 'partial'].indexOf(e.status) >= 0 ? e.status : null, got: e.got == null ? null : num(e.got, 0, 999, 0), locked: !!e.locked
+      status: ['done', 'missed', 'partial'].indexOf(e.status) >= 0 ? e.status : null, got: e.got == null ? null : num(e.got, 0, 999, 0), locked: !!e.locked,
+      t: num(e.t, 0, 8.64e15, 0)                   // when you last touched it (lets two devices decide which change is newer)
     };
   }
   function normalise() {
@@ -107,16 +111,18 @@
     S.weekStart = S.weekStart == null ? null : num(S.weekStart, 0, 6, null);
     S.lastSeen = DATE_RE.test(S.lastSeen) ? S.lastSeen : null;
     S.shareUrl = typeof S.shareUrl === 'string' && /^https?:\/\/[^\s<>"']{3,300}$/i.test(S.shareUrl) ? S.shareUrl : '';
+    S.name = typeof S.name === 'string' ? S.name.slice(0, 40) : '';
   }
   /** Write now (encrypted by persistFn). Returns a promise; writes are queued so they can never land out of order. */
   function flush() {
     clearTimeout(saveT); saveT = null;
-    if (!persistFn) return writeChain;
+    if (!persistFn || !pending) return writeChain;      // nothing changed: do not re-encrypt, rewrite or re-sync identical data
+    pending = false;
     var json = JSON.stringify(S), fn = persistFn;
-    writeChain = writeChain.then(function () { return fn(json); }).catch(function (err) { if (api.onStorageError) api.onStorageError(err); });
+    writeChain = writeChain.then(function () { return fn(json); }).catch(function (err) { pending = true; if (api.onStorageError) api.onStorageError(err); });
     return writeChain;
   }
-  function save() { if (!persistFn) return; clearTimeout(saveT); saveT = setTimeout(flush, 100); }
+  function save() { if (!persistFn) return; pending = true; clearTimeout(saveT); saveT = setTimeout(flush, 100); }
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', function () { if (document.hidden) flush(); });
 
@@ -148,7 +154,7 @@
     return { exId: p.exId || null, title: p.title || '', cat: p.cat, sets: p.sets || 1, reps: effReps(p, k), unit: p.unit || 'reps' };
   }
   function entryFromPlan(p, k) {
-    return Object.assign({ id: uid(), planId: p.id, status: null, got: null, locked: false }, fieldsFromPlan(p, k));
+    return Object.assign({ id: uid(), planId: p.id, status: null, got: null, locked: false, t: 0 }, fieldsFromPlan(p, k));
   }
   function sched(k) {
     var w = wd(k);
@@ -232,12 +238,13 @@
 
   function setStatus(k, id, st) {
     var e = findEntry(k, id); if (!e) return;
-    e.status = e.status === st ? null : st;
+    e.status = e.status === st ? null : st; e.t = Date.now();
     if (e.status === 'partial' && (e.got == null || e.got > gotMax(e))) e.got = gotDefault(e);
     save();
   }
   function bumpEntry(k, id, field, delta) {
     var e = findEntry(k, id); if (!e) return null;
+    e.t = Date.now();
     if (field === 'reps') {
       e.reps = clamp(e.reps + delta, 1, 999); e.locked = true;
       if (e.got != null) e.got = clamp(e.got, 0, gotMax(e));
@@ -252,7 +259,7 @@
     var day = S.logs[k] || (S.logs[k] = { items: [], skip: [] });
     var e = {
       id: uid(), planId: null, exId: o.exId || null, title: o.title || '', cat: o.cat, sets: o.sets || 1,
-      reps: o.reps || 10, unit: o.unit || 'reps', status: null, got: null, locked: true
+      reps: o.reps || 10, unit: o.unit || 'reps', status: null, got: null, locked: true, t: Date.now()
     };
     day.items.push(e); save(); return e;
   }

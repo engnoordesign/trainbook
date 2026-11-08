@@ -14,7 +14,7 @@ const STAMPED = BUILD !== 'dev';
 const ASSETS = [
   './', 'index.html', 'manifest.webmanifest', 'favicon.svg',
   'css/app.css',
-  'js/icons.js', 'js/i18n.js', 'js/data.js', 'js/qr.js', 'js/vault.js', 'js/store.js', 'js/timer.js', 'js/ui-core.js', 'js/views.js', 'js/sheets.js', 'js/auth.js', 'js/account.js', 'js/app.js',
+  'js/icons.js', 'js/i18n.js', 'js/data.js', 'js/qr.js', 'js/vault.js', 'js/store.js', 'js/timer.js', 'js/ui-core.js', 'js/views.js', 'js/sheets.js', 'js/merge.js', 'js/sync.js', 'js/auth.js', 'js/account.js', 'js/app.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png'
 ];
 
@@ -55,7 +55,9 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
-  if (new URL(req.url).origin !== self.location.origin) return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/')) return;          // the account service: always live, never cached
 
   const nav = req.mode === 'navigate';
   /* the saved copy; for a page load the app shell is the fallback (hash routes all share one page) */

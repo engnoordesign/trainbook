@@ -136,7 +136,33 @@
     'au.stay': 'Stay signed in on this device',
     'au.stayDesc': 'Opens straight to your data without a password. Anyone who can open TrainBook on this device can see it, so leave it off on shared computers.',
     'au.deleteProfile': 'Delete this profile', 'au.deleteMsg': 'This permanently deletes this profile and all its data from this device. Enter the password to confirm.',
-    'au.deleted': 'Profile deleted'
+    'au.deleted': 'Profile deleted',
+
+    'sy.synced': 'Synced', 'sy.signInOther': 'Sign in from another device', 'sy.signIn': 'Sign in',
+    'sy.signInOtherSub': 'Use the account you made on another device. Your data is downloaded here and unlocked with your password.',
+    'sy.createInstead': 'Create a new account', 'sy.haveAccount': 'Already have an account?',
+    'sy.resetRemoteSub': 'Enter your username, the recovery key you saved, and a new password.',
+    'sy.inviteCode': 'Invite code', 'sy.deviceOnly': 'Keep this profile on this device only (no account on the server)',
+    'sy.noteGlobal': 'Your account will also be saved (encrypted) on the server, so you can sign in from any device.',
+    'sy.noteLocal': 'There is no account service at this address, so this profile stays on this device.',
+    'sy.noteClosed': 'New accounts are closed on this server, so this profile stays on this device.',
+    'sy.errLocked': 'Too many wrong tries. Wait {n} seconds.', 'sy.errNoAccount': 'No account with that username.',
+    'sy.errTaken': 'That username is already taken. Choose another one.',
+    'sy.errInvite': 'A valid invite code is needed to create an account here.', 'sy.errClosed': 'New accounts are closed on this server.',
+    'sy.errRejected': 'The server did not accept that request.', 'sy.errOffline': "Can't reach the server. Check your connection and try again.",
+    'sy.errLocalClash': 'A different profile with that username already exists on this device.', 'sy.errNoServer': 'There is no account service at this address.',
+    'sy.st.synced': 'Synced {ago}', 'sy.st.syncing': 'Syncing…', 'sy.st.offline': 'Offline - changes are saved here and will sync later',
+    'sy.st.auth': 'Sign in again to keep syncing', 'sy.st.error': 'Sync problem - will retry', 'sy.now': 'Sync now',
+    'sy.passwordChanged': 'Your password was changed on another device (or this account was removed). Sign out and sign in again to keep syncing.',
+    'sy.mismatch': 'This account was reset or replaced on the server. Sign out and sign in again.',
+    'sy.globalNote': 'Your account is on the server (encrypted), so you can sign in from any device.',
+    'sy.deviceOnlyStatus': 'This profile is only on this device.', 'sy.deviceOnlyClosed': 'This profile is only on this device (new accounts are closed on the server).',
+    'sy.deviceOnlyNoServer': 'This profile is only on this device (no account service at this address).',
+    'sy.turnOn': 'Turn on sync', 'sy.turnOnTitle': 'Use this profile on any device', 'sy.turnOnSub': 'Saves your encrypted data on the server',
+    'sy.turnOnDesc': 'Your data will be saved encrypted on the server so you can sign in from any device with your username and password. A new recovery key will be created, and the old one will stop working.',
+    'sy.keyTitleNew': 'Your new recovery key', 'sy.passOnline': 'Needs an internet connection: the new password is also set on the server.',
+    'sy.alsoServer': 'Also delete my account from the server',
+    'sy.alsoServerNote': 'Leave this off to remove the profile from this device only; you can sign in again from any device. Turn it on to erase the account everywhere.'
   };
 
   var ar = {
@@ -273,7 +299,33 @@
     'au.stay': 'البقاء مسجّلًا على هذا الجهاز',
     'au.stayDesc': 'يفتح بياناتك مباشرة بدون كلمة مرور. أي شخص يستطيع فتح دفتر التمرين على هذا الجهاز يمكنه رؤيتها، لذا أبقه معطّلًا على الأجهزة المشتركة.',
     'au.deleteProfile': 'حذف هذا الملف', 'au.deleteMsg': 'سيحذف هذا الملف وكل بياناته نهائيًا من هذا الجهاز. أدخل كلمة المرور للتأكيد.',
-    'au.deleted': 'تم حذف الملف'
+    'au.deleted': 'تم حذف الملف',
+
+    'sy.synced': 'متزامن', 'sy.signInOther': 'تسجيل الدخول من جهاز آخر', 'sy.signIn': 'تسجيل الدخول',
+    'sy.signInOtherSub': 'استخدم الحساب الذي أنشأته على جهاز آخر. تُنزَّل بياناتك هنا وتُفتح بكلمة مرورك.',
+    'sy.createInstead': 'إنشاء حساب جديد', 'sy.haveAccount': 'لديك حساب بالفعل؟',
+    'sy.resetRemoteSub': 'أدخل اسم المستخدم ومفتاح الاسترداد الذي حفظته وكلمة مرور جديدة.',
+    'sy.inviteCode': 'رمز الدعوة', 'sy.deviceOnly': 'أبقِ هذا الملف على هذا الجهاز فقط (بدون حساب على الخادم)',
+    'sy.noteGlobal': 'سيُحفظ حسابك أيضًا (مشفّرًا) على الخادم لتتمكن من الدخول من أي جهاز.',
+    'sy.noteLocal': 'لا توجد خدمة حسابات في هذا العنوان، لذا يبقى هذا الملف على هذا الجهاز.',
+    'sy.noteClosed': 'إنشاء حسابات جديدة مغلق على هذا الخادم، لذا يبقى هذا الملف على هذا الجهاز.',
+    'sy.errLocked': 'محاولات خاطئة كثيرة. انتظر {n} ثانية.', 'sy.errNoAccount': 'لا يوجد حساب بهذا الاسم.',
+    'sy.errTaken': 'اسم المستخدم محجوز. اختر اسمًا آخر.',
+    'sy.errInvite': 'يلزم رمز دعوة صالح لإنشاء حساب هنا.', 'sy.errClosed': 'إنشاء حسابات جديدة مغلق على هذا الخادم.',
+    'sy.errRejected': 'لم يقبل الخادم هذا الطلب.', 'sy.errOffline': 'تعذّر الوصول إلى الخادم. تحقق من اتصالك وحاول مجددًا.',
+    'sy.errLocalClash': 'يوجد على هذا الجهاز ملف آخر بنفس اسم المستخدم.', 'sy.errNoServer': 'لا توجد خدمة حسابات في هذا العنوان.',
+    'sy.st.synced': 'تمت المزامنة {ago}', 'sy.st.syncing': 'جارٍ المزامنة…', 'sy.st.offline': 'غير متصل — التغييرات محفوظة هنا وستتزامن لاحقًا',
+    'sy.st.auth': 'سجّل الدخول مجددًا لمتابعة المزامنة', 'sy.st.error': 'مشكلة في المزامنة — ستُعاد المحاولة', 'sy.now': 'زامن الآن',
+    'sy.passwordChanged': 'تم تغيير كلمة المرور على جهاز آخر (أو أُزيل هذا الحساب). سجّل الخروج ثم الدخول مجددًا لمتابعة المزامنة.',
+    'sy.mismatch': 'أُعيد تعيين هذا الحساب أو استُبدل على الخادم. سجّل الخروج ثم الدخول مجددًا.',
+    'sy.globalNote': 'حسابك على الخادم (مشفّرًا)، فيمكنك الدخول من أي جهاز.',
+    'sy.deviceOnlyStatus': 'هذا الملف على هذا الجهاز فقط.', 'sy.deviceOnlyClosed': 'هذا الملف على هذا الجهاز فقط (الحسابات الجديدة مغلقة على الخادم).',
+    'sy.deviceOnlyNoServer': 'هذا الملف على هذا الجهاز فقط (لا توجد خدمة حسابات في هذا العنوان).',
+    'sy.turnOn': 'تفعيل المزامنة', 'sy.turnOnTitle': 'استخدم هذا الملف على أي جهاز', 'sy.turnOnSub': 'يحفظ بياناتك المشفّرة على الخادم',
+    'sy.turnOnDesc': 'ستُحفظ بياناتك مشفّرة على الخادم لتتمكن من الدخول من أي جهاز باسم المستخدم وكلمة المرور. سيُنشأ مفتاح استرداد جديد ويتوقف القديم عن العمل.',
+    'sy.keyTitleNew': 'مفتاح الاسترداد الجديد', 'sy.passOnline': 'يتطلب اتصالًا بالإنترنت: تُضبط كلمة المرور الجديدة على الخادم أيضًا.',
+    'sy.alsoServer': 'احذف حسابي من الخادم أيضًا',
+    'sy.alsoServerNote': 'اتركه معطّلًا لإزالة الملف من هذا الجهاز فقط، ويمكنك الدخول مجددًا من أي جهاز. فعّله لمسح الحساب من كل مكان.'
   };
 
   var dict = { en: en, ar: ar };

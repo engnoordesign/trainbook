@@ -164,8 +164,9 @@
       '<p class="muted sm center about">TrainBook v' + esc(App.VERSION) + ' (' + esc(App.BUILD) + ') · ' + esc(t('set.local')) + '</p></div>';
     return h;
   }
-  UI.openSettings = function () { UI.openSheet(settingsHtml(), { label: t('set.title') }); };
-  UI.refreshSettings = function () { if (UI.sheetOpen()) UI.setSheet(settingsHtml()); };
+  UI.openSettings = function () { UI.openSheet(settingsHtml(), { label: t('set.title'), kind: 'settings' }); };
+  /* only refreshes the settings sheet (never replaces some other dialog that happens to be open) */
+  UI.refreshSettings = function () { if (UI.sheetOpen() && UI.sheetKind() === 'settings') UI.setSheet(settingsHtml()); };
 
   /* =============== QR code: get the app on a phone =============== */
   var qrUrl = '';

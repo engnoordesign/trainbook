@@ -5,6 +5,9 @@
      data key (DK)     random 256-bit AES-GCM key. It encrypts the profile's data. It never changes.
      password wrap     DK encrypted with a key derived from the password (PBKDF2-SHA256, 600k rounds, then HKDF).
      recovery wrap     DK encrypted with a key derived from a random recovery key shown once at sign-up.
+     login secrets     two more values derived the same way ("auth" from the password, "recAuth" from the recovery key).
+                       The sync server keeps only a salted hash of them, so it can check who you are but cannot decrypt
+                       anything, and neither of them is the password or the key.
    Changing the password only re-wraps DK, so nothing has to be re-encrypted and the recovery key keeps working.
    Sealed values look like  "v1.<iv>.<ciphertext>"  (base64). */
 const Vault = (() => {
@@ -17,6 +20,7 @@ const Vault = (() => {
   const b64 = bytes => { const a = new Uint8Array(bytes); let s = ''; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000)); return btoa(s); };
   const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
   V.b64 = b64; V.unb64 = unb64;
+  V.b64url = bytes => b64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   V.random = n => globalThis.crypto.getRandomValues(new Uint8Array(n));
 
   /* ---------- primitives ---------- */
@@ -47,8 +51,12 @@ const Vault = (() => {
   };
 
   /* ---------- password and recovery key ---------- */
-  V.fromPassword = async (password, salt, iter) => hkdf(await pbkdf2(password, salt, iter || V.ITER), 'kek');
-  V.fromRecovery = bytes => hkdf(bytes, 'rec-kek');
+  /** { kek: key that wraps the data key, auth: login secret for the sync server } */
+  V.fromPassword = async (password, salt, iter) => {
+    const master = await pbkdf2(password, salt, iter || V.ITER);
+    return { kek: await hkdf(master, 'kek'), auth: V.b64url(await hkdf(master, 'auth')) };
+  };
+  V.fromRecovery = async bytes => ({ kek: await hkdf(bytes, 'rec-kek'), auth: V.b64url(await hkdf(bytes, 'rec-auth')) });
 
   const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford: no I, L, O, U
   const toB32 = bytes => { let acc = 0, bits = 0, out = ''; for (const b of bytes) { acc = ((acc << 8) | b) & 0xFFFFFF; bits += 8; while (bits >= 5) { out += B32[(acc >>> (bits - 5)) & 31]; bits -= 5; } } if (bits) out += B32[(acc << (5 - bits)) & 31]; return out; };
@@ -66,22 +74,31 @@ const Vault = (() => {
   /** Everything needed for a brand-new account. */
   V.createAccount = async password => {
     const salt = V.random(16), dk = V.random(32), rec = V.random(16);
-    const kek = await V.fromPassword(password, salt, V.ITER), rkek = await V.fromRecovery(rec);
-    return { dk, recovery: rec, salt: b64(salt), iter: V.ITER, pwWrap: await V.seal(kek, dk), recWrap: await V.seal(rkek, dk) };
+    const pw = await V.fromPassword(password, salt, V.ITER), rc = await V.fromRecovery(rec);
+    return { dk, recovery: rec, salt: b64(salt), iter: V.ITER, auth: pw.auth, recAuth: rc.auth, pwWrap: await V.seal(pw.kek, dk), recWrap: await V.seal(rc.kek, dk) };
   };
-  /** Password -> data key. p = { salt, iter, pwWrap }. Throws BAD_KEY for a wrong password. */
-  V.unlock = async (password, p) => V.open(await V.fromPassword(password, unb64(p.salt), p.iter), p.pwWrap, true);
-  V.unlockWithRecovery = async (recoveryBytes, recWrap) => V.open(await V.fromRecovery(recoveryBytes), recWrap, true);
-  /** New password for the same data key: fresh salt and a new wrap. */
+  /** Password -> { dk, auth }. p = { salt, iter, pwWrap }. Throws BAD_KEY for a wrong password. */
+  V.unlock = async (password, p) => {
+    const pw = await V.fromPassword(password, unb64(p.salt), p.iter);
+    return { dk: await V.open(pw.kek, p.pwWrap, true), auth: pw.auth };
+  };
+  /** Recovery key -> { dk, recAuth }. Throws BAD_KEY for a wrong key. */
+  V.unlockWithRecovery = async (recoveryBytes, recWrap) => {
+    const rc = await V.fromRecovery(recoveryBytes);
+    return { dk: await V.open(rc.kek, recWrap, true), recAuth: rc.auth };
+  };
+  /** New password for the same data key: fresh salt, new wrap, new login secret. */
   V.rewrap = async (newPassword, dk) => {
-    const salt = V.random(16), kek = await V.fromPassword(newPassword, salt, V.ITER);
-    return { salt: b64(salt), iter: V.ITER, pwWrap: await V.seal(kek, dk) };
+    const salt = V.random(16), pw = await V.fromPassword(newPassword, salt, V.ITER);
+    return { salt: b64(salt), iter: V.ITER, auth: pw.auth, pwWrap: await V.seal(pw.kek, dk) };
   };
   /** A fresh recovery key for the same data key. */
   V.newRecovery = async dk => {
-    const rec = V.random(16);
-    return { recovery: rec, recWrap: await V.seal(await V.fromRecovery(rec), dk) };
+    const rec = V.random(16), rc = await V.fromRecovery(rec);
+    return { recovery: rec, recAuth: rc.auth, recWrap: await V.seal(rc.kek, dk) };
   };
+  /** Just the login secret for a known salt (used when signing in from another device). */
+  V.deriveAuth = async (password, saltB64, iter) => (await V.fromPassword(password, unb64(saltB64), iter)).auth;
 
   /* ---------- device key: lets a trusted device reopen a profile without typing the password ---------- */
   /** A key the browser keeps but can never reveal (non-extractable), so it cannot be copied out of storage. */

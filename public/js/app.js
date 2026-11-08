@@ -201,7 +201,9 @@
     pickDay: function (d) { UI.hist.sel = d.k; App.render(); },
     monthPrev: function () { var h = UI.hist; h.m--; if (h.m < 0) { h.m = 11; h.y--; } App.render(); },
     monthNext: function () { var h = UI.hist; h.m++; if (h.m > 11) { h.m = 0; h.y++; } App.render(); },
-    openSettings: function () { UI.openSettings(); },
+    openSettings: function () { UI.openSettings(); Sync.info().then(function () { UI.refreshSettings(); }); },
+    syncNow: function () { Account.syncNow(); },
+    acctSyncOn: function () { Account.openSyncOn(); },
     openQR: function () { UI.openQR(); },
     qrCopy: function () { UI.qrAct('qrCopy'); },
     qrSave: function () { UI.qrAct('qrSave'); },
@@ -303,6 +305,7 @@
   function boot() {
     I18N.setLang(Auth.deviceLang());
     Store.onStorageError = function () { UI.toast(t('au.errGeneric'), { ms: 8000 }); };
+    Sync.onStatus(function () { UI.refreshSettings(); });       // keeps the "synced / offline" line in Settings live
     Timer.load();
     Timer.setHandlers(function () { if (route() === 'train') UI.tickTrain(); renderPill(); }, function () { if (!quietFlag) { App.render(); } });
     App.refreshTheme();

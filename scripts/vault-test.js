@@ -14,6 +14,7 @@ let pass = 0, failed = 0;
 const ok = (cond, label) => { if (cond) { pass++; } else { failed++; console.error('  ✗', label); } };
 const rejects = async (fn, label, code) => { try { await fn(); ok(false, label + ' (should have thrown)'); } catch (e) { ok(!code || e.message === code, label + ' (got ' + e.message + ')'); } };
 const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+const SECRET = /^[A-Za-z0-9_-]{43}$/;
 
 (async () => {
   console.log('Vault tests (PBKDF2 ' + Vault.ITER + ' rounds, a few seconds)');
@@ -33,12 +34,13 @@ const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
   const acct = await Vault.createAccount('correct horse battery');
   ok(acct.dk.length === 32 && acct.recovery.length === 16, 'account key sizes');
   const profile = { salt: acct.salt, iter: acct.iter, pwWrap: acct.pwWrap };
-  ok(same(await Vault.unlock('correct horse battery', profile), acct.dk), 'right password opens the data key');
+  const u1 = await Vault.unlock('correct horse battery', profile);
+  ok(same(u1.dk, acct.dk), 'right password opens the data key');
   await rejects(() => Vault.unlock('wrong password', profile), 'wrong password rejected', 'BAD_KEY');
   await rejects(() => Vault.unlock('correct horse battery ', profile), 'trailing space is a different password', 'BAD_KEY');
   /* the same password typed with different Unicode forms must still work (NFKC normalisation) */
   const uni = await Vault.createAccount('pässwörd-2026');
-  ok(same(await Vault.unlock('pässwörd-2026', { salt: uni.salt, iter: uni.iter, pwWrap: uni.pwWrap }), uni.dk), 'Unicode-normalised passwords match');
+  ok(same((await Vault.unlock('pässwörd-2026', { salt: uni.salt, iter: uni.iter, pwWrap: uni.pwWrap })).dk, uni.dk), 'Unicode-normalised passwords match');
 
   const text = Vault.formatRecovery(acct.recovery);
   ok(/^([0-9A-Z]{4}-){6}[0-9A-Z]{2}$/.test(text), 'recovery key looks like ABCD-EFGH-... (' + text + ')');
@@ -46,26 +48,39 @@ const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
   ok(same(Vault.parseRecovery(text.toLowerCase().replace(/-/g, ' ')), acct.recovery), 'recovery key: lower case + spaces accepted');
   ok(Vault.parseRecovery(text.slice(0, -2)) === null, 'short recovery key rejected');
   ok(Vault.parseRecovery('!!!') === null, 'junk recovery key rejected');
-  ok(same(await Vault.unlockWithRecovery(Vault.parseRecovery(text), acct.recWrap), acct.dk), 'recovery key opens the same data key');
+  const ur = await Vault.unlockWithRecovery(Vault.parseRecovery(text), acct.recWrap);
+  ok(same(ur.dk, acct.dk), 'recovery key opens the same data key');
   await rejects(() => Vault.unlockWithRecovery(Vault.random(16), acct.recWrap), 'wrong recovery key rejected', 'BAD_KEY');
+
+  /* login secrets (what the sync server checks) */
+  ok(SECRET.test(acct.auth) && SECRET.test(acct.recAuth), 'login secrets are 43-char base64url');
+  ok(acct.auth === u1.auth && acct.recAuth === ur.recAuth, 'the same secrets come back when unlocking later (so any device can sign in)');
+  ok(acct.auth !== acct.recAuth, 'password secret and recovery secret differ');
+  ok((await Vault.deriveAuth('correct horse battery', acct.salt, acct.iter)) === acct.auth, 'deriveAuth (sign-in from another device) matches');
+  ok((await Vault.deriveAuth('wrong password', acct.salt, acct.iter)) !== acct.auth, 'a wrong password derives a different secret');
+  ok(!acct.auth.includes('correct') && acct.auth !== Vault.b64url(acct.dk), 'the secret is not the password and not the data key');
+  const acct2 = await Vault.createAccount('correct horse battery');
+  ok(acct2.auth !== acct.auth, 'same password, different account -> different secret (random salt)');
 
   /* change password keeps data + recovery working */
   const re = await Vault.rewrap('new password 123', acct.dk);
-  ok(same(await Vault.unlock('new password 123', re), acct.dk), 'new password opens the same data key');
+  const u2 = await Vault.unlock('new password 123', re);
+  ok(same(u2.dk, acct.dk), 'new password opens the same data key');
+  ok(re.auth === u2.auth && re.auth !== acct.auth, 'password change gives a new login secret');
   await rejects(() => Vault.unlock('correct horse battery', re), 'old password no longer works', 'BAD_KEY');
   ok(re.salt !== acct.salt, 'fresh salt on password change');
-  ok(same(await Vault.unlockWithRecovery(Vault.parseRecovery(text), acct.recWrap), acct.dk), 'recovery key still works after a password change');
+  ok(same((await Vault.unlockWithRecovery(Vault.parseRecovery(text), acct.recWrap)).dk, acct.dk), 'recovery key still works after a password change');
 
   /* new recovery key replaces the old one */
   const nr = await Vault.newRecovery(acct.dk);
-  ok(same(await Vault.unlockWithRecovery(nr.recovery, nr.recWrap), acct.dk), 'new recovery key opens the data key');
+  const unr = await Vault.unlockWithRecovery(nr.recovery, nr.recWrap);
+  ok(same(unr.dk, acct.dk) && unr.recAuth === nr.recAuth && nr.recAuth !== acct.recAuth, 'new recovery key opens the data key and has its own secret');
   await rejects(() => Vault.unlockWithRecovery(acct.recovery, nr.recWrap), 'old recovery key does not open the new wrap', 'BAD_KEY');
 
   /* the data is really unreadable without the password: whole profile round trip */
   const blob = await Vault.seal(acct.dk, JSON.stringify({ secret: 'plan' }));
   ok(!blob.includes('plan') && !Buffer.from(blob.split('.')[2], 'base64').toString('latin1').includes('secret'), 'ciphertext does not contain the plaintext');
-  const dk2 = await Vault.unlock('new password 123', re);
-  ok(JSON.parse(await Vault.open(dk2, blob)).secret === 'plan', 'data decrypts after password change');
+  ok(JSON.parse(await Vault.open(u2.dk, blob)).secret === 'plan', 'data decrypts after password change');
 
   /* device key (non-extractable) */
   const dev = await Vault.newDeviceKey();

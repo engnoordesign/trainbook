@@ -45,12 +45,13 @@
   };
 
   /* ----- sheet ----- */
-  var lastFocus = null, onClose = null, sheetIsOpen = false;
+  var lastFocus = null, onClose = null, sheetIsOpen = false, sheetKind = '';
+  UI.sheetKind = function () { return sheetKind; };
   UI.openSheet = function (html, opts) {
     opts = opts || {};
     var root = UI.$('#sheet-root');
     if (root.firstChild) UI.closeSheet(true);
-    lastFocus = document.activeElement; onClose = opts.onClose || null; sheetIsOpen = true;
+    lastFocus = document.activeElement; onClose = opts.onClose || null; sheetIsOpen = true; sheetKind = opts.kind || '';
     root.innerHTML = '<div class="backdrop" data-act="closeSheet"></div>' +
       '<div class="sheet ' + (opts.cls || '') + '" role="dialog" aria-modal="true" aria-label="' + UI.esc(opts.label || '') + '" tabindex="-1">' + html + '</div>';
     document.body.classList.add('noscroll');
@@ -69,7 +70,7 @@
   UI.closeSheet = function (quiet) {
     var root = UI.$('#sheet-root');
     if (!root.firstChild) return;
-    var cb = onClose; onClose = null; sheetIsOpen = false;
+    var cb = onClose; onClose = null; sheetIsOpen = false; sheetKind = '';
     root.classList.remove('open');
     var fin = function () { root.innerHTML = ''; };
     if (quiet) fin(); else setTimeout(fin, 220);

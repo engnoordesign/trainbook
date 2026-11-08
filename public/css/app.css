@@ -405,6 +405,14 @@ body.locked { overflow: auto; }
 .acct-card { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; background: var(--surface2); }
 .acct-tx { display: flex; flex-direction: column; min-width: 0; } .acct-tx b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .acct-tx small { color: var(--muted); }
 .seg.dim { opacity: .5; }
+.pill-sm.info { background: var(--accent-soft); color: var(--accent); }
+.notice.warn { background: var(--partial-soft); color: var(--partial); }
+.sync-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--surface2); }
+.sync-tx { flex: 1; min-width: 0; font-size: .86rem; font-weight: 700; line-height: 1.35; }
+.sync-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--muted); }
+.sync-dot.st-synced { background: var(--done); } .sync-dot.st-syncing { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+.sync-dot.st-offline { background: var(--partial); } .sync-dot.st-auth, .sync-dot.st-error { background: var(--missed); }
+@keyframes pulse { 50% { opacity: .3; } }
 .hide-sm { display: none; }
 @media (min-width: 900px) { .hide-sm { display: inline-flex; } }
 .qr-box { width: min(270px, 72vw); margin: 10px auto 8px; padding: 8px; background: #fff; border-radius: 22px; box-shadow: var(--shadow); border: 1px solid var(--line); }
