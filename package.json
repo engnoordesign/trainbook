@@ -1,0 +1,14 @@
+{
+  "name": "trainbook",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TrainBook - bodyweight training notebook (Arabic / English PWA)",
+  "scripts": {
+    "start": "node scripts/serve.js",
+    "check": "node scripts/check.js",
+    "icons": "node scripts/make-icons.js",
+    "build": "node scripts/stamp.js",
+    "deploy": "npx wrangler deploy"
+  },
+  "engines": { "node": ">=18" }
+}

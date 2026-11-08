@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" dir="ltr" data-theme="light" data-super="0">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>TrainBook</title>
+  <meta name="description" content="TrainBook - a simple bodyweight training notebook. دفتر التمرين: دفتر تمارينك اليومي.">
+  <meta name="theme-color" content="#f4f5f8">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="TrainBook">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="format-detection" content="telephone=no">
+  <!-- set language / theme / super-day before first paint (no flash) -->
+  <script>
+    (function () {
+      try {
+        var s = JSON.parse(localStorage.getItem('trainbook.v1') || 'null') || {};
+        var lang = s.lang || (/^ar/i.test(navigator.language || '') ? 'ar' : 'en');
+        var th = s.theme || 'auto';
+        if (th === 'auto') th = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; };
+        var k = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+        var sup = (s.superDates || []).indexOf(k) >= 0 || (s.superWeekdays || []).indexOf(d.getDay()) >= 0;
+        var r = document.documentElement;
+        r.lang = lang; r.dir = lang === 'ar' ? 'rtl' : 'ltr'; r.dataset.theme = th; r.dataset.super = sup ? '1' : '0';
+      } catch (e) { }
+    })();
+  </script>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <aside class="nav" id="nav"></aside>
+    <main class="main">
+      <header class="top" id="top"></header>
+      <div id="view" aria-live="polite"></div>
+    </main>
+  </div>
+  <div id="pill"></div>
+  <div id="sheet-root"></div>
+  <div id="toast-root" aria-live="polite"></div>
+  <noscript><p class="noscript">TrainBook needs JavaScript. / يحتاج دفتر التمرين إلى تفعيل جافاسكريبت.</p></noscript>
+
+  <script src="js/icons.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/timer.js"></script>
+  <script src="js/ui-core.js"></script>
+  <script src="js/views.js"></script>
+  <script src="js/sheets.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

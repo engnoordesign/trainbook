@@ -1,0 +1,12 @@
+services:
+  trainbook:
+    build: .
+    image: trainbook:latest
+    container_name: trainbook
+    restart: unless-stopped
+    ports:
+      - "8080:8080"      # open http://localhost:8080
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

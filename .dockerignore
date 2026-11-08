@@ -1,0 +1,13 @@
+.git
+.gitignore
+.github
+.claude
+node_modules
+*.log
+.wrangler
+README.md
+Dockerfile
+docker-compose.yml
+.dockerignore
+scripts/update.ps1
+scripts/update.sh
