@@ -16,6 +16,7 @@
       course: null,        // active premade course {id,start,weeks,days}
       superDates: [],      // specific super days
       superWeekdays: [],   // recurring super weekdays
+      shareUrl: '',        // custom address for the "get the app" QR code ('' = this page's address)
       lastSeen: null
     };
   }
@@ -85,6 +86,7 @@
     S.theme = ['auto', 'light', 'dark'].indexOf(S.theme) >= 0 ? S.theme : 'auto';
     S.weekStart = S.weekStart == null ? null : num(S.weekStart, 0, 6, null);
     S.lastSeen = DATE_RE.test(S.lastSeen) ? S.lastSeen : null;
+    S.shareUrl = typeof S.shareUrl === 'string' && /^https?:\/\/[^\s<>"']{3,300}$/i.test(S.shareUrl) ? S.shareUrl : '';
   }
   function flush() { clearTimeout(saveT); saveT = null; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } }
   function save() { clearTimeout(saveT); saveT = setTimeout(flush, 120); }

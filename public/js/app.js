@@ -45,6 +45,7 @@
   function renderTop(r) {
     var sup = Store.isSuper(Store.todayKey());
     $('#top').innerHTML = '<div class="top-l"><span class="logo">' + LOGO + '</span><h1>' + esc(t(TITLE[r])) + '</h1></div><div class="top-r">' +
+      '<button type="button" class="icon-btn hide-sm" data-act="openQR" aria-label="' + esc(t('qr.open')) + '" title="' + esc(t('qr.open')) + '">' + ic('qr', 20) + '</button>' +
       (App.canInstall() ? '<button type="button" class="icon-btn" data-act="install" aria-label="' + esc(t('set.installBtn')) + '">' + ic('download', 20) + '</button>' : '') +
       '<button type="button" class="icon-btn flame' + (sup ? ' on' : '') + '" data-act="openSuper" aria-label="' + esc(t('super.title')) + '">' + ic('flame', 20) + '</button>' +
       '<button type="button" class="icon-btn" data-act="openSettings" aria-label="' + esc(t('set.title')) + '">' + ic('sliders', 20) + '</button></div>';
@@ -193,6 +194,10 @@
     monthPrev: function () { var h = UI.hist; h.m--; if (h.m < 0) { h.m = 11; h.y--; } App.render(); },
     monthNext: function () { var h = UI.hist; h.m++; if (h.m > 11) { h.m = 0; h.y++; } App.render(); },
     openSettings: function () { UI.openSettings(); },
+    openQR: function () { UI.openQR(); },
+    qrCopy: function () { UI.qrAct('qrCopy'); },
+    qrSave: function () { UI.qrAct('qrSave'); },
+    qrShare: function () { UI.qrAct('qrShare'); },
     setLang: function (d) { App.setLang(d.v); },
     setTheme: function (d) { Store.setPref('theme', d.v); App.refreshTheme(); UI.refreshSettings(); },
     setWeek: function (d) { Store.setPref('weekStart', +d.v); App.render(); UI.refreshSettings(); },
@@ -239,7 +244,10 @@
     var a = e.target.closest('[data-act]');
     if (a && A[a.dataset.act]) { if (a.disabled) return; A[a.dataset.act](a.dataset); }
   });
-  document.addEventListener('input', function (e) { if (e.target.id === 'f-title') UI.formInput(e.target.value); });
+  document.addEventListener('input', function (e) {
+    if (e.target.id === 'f-title') UI.formInput(e.target.value);
+    else if (e.target.id === 'qr-url') UI.qrInput(e.target.value);
+  });
   document.addEventListener('change', function (e) { if (e.target.id === 'imp-file' && e.target.files[0]) importData(e.target.files[0]); });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && UI.sheetOpen()) UI.closeSheet();

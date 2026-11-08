@@ -148,6 +148,8 @@
       '<div class="fld"><span>' + ic('globe', 16) + esc(t('set.language')) + '</span>' + seg('setLang', lang, [['ar', 'العربية'], ['en', 'English']]) + '</div>' +
       '<div class="fld"><span>' + ic('sun', 16) + esc(t('set.theme')) + '</span>' + seg('setTheme', S.theme, [['auto', t('set.auto')], ['light', t('set.light')], ['dark', t('set.dark')]]) + '</div>' +
       '<div class="fld"><span>' + ic('calendar', 16) + esc(t('set.weekStart')) + '</span>' + seg('setWeek', ws, [[6, UI.weekdayName(6)], [0, UI.weekdayName(0)], [1, UI.weekdayName(1)]]) + '</div>' +
+      '<div class="fld"><span>' + ic('qr', 16) + esc(t('qr.open')) + '</span><p class="muted sm">' + esc(t('qr.openDesc')) + '</p>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-act="openQR">' + ic('qr', 18) + esc(t('qr.show')) + '</button></div></div>' +
       '<div class="fld"><span>' + ic('phone', 16) + esc(t('set.install')) + '</span>';
     if (App.isStandalone()) h += '<p class="muted sm">' + esc(t('set.installed')) + '</p>';
     else if (App.canInstall()) h += '<p class="muted sm">' + esc(t('set.installDesc')) + '</p><button type="button" class="btn primary" data-act="install">' + ic('download', 18) + esc(t('set.installBtn')) + '</button>';
@@ -164,6 +166,77 @@
   }
   UI.openSettings = function () { UI.openSheet(settingsHtml(), { label: t('set.title') }); };
   UI.refreshSettings = function () { if (UI.sheetOpen()) UI.setSheet(settingsHtml()); };
+
+  /* =============== QR code: get the app on a phone =============== */
+  var qrUrl = '';
+  function pageUrl() { return /^https?:$/.test(location.protocol) ? location.origin + location.pathname.replace(/index\.html$/, '') : ''; }
+  function validUrl(u) { return /^https?:\/\/[^\s<>"']{3,300}$/i.test(u) && !!QR.encode(u); }
+  function isLocalUrl(u) {
+    try { var h = new URL(u).hostname; return h === 'localhost' || h === '[::1]' || h === '::1' || h === '0.0.0.0' || /^127\./.test(h); } catch (e) { return false; }
+  }
+  function qrNote(u) {
+    if (!validUrl(u)) return '<p class="qr-note bad">' + esc(t('qr.invalid')) + '</p>';
+    if (isLocalUrl(u)) return '<p class="qr-note">' + esc(t('qr.localWarn')) + '</p>';
+    if (/^http:/i.test(u)) return '<p class="qr-note info">' + esc(t('qr.httpNote')) + '</p>';
+    return '';
+  }
+  function qrBox(u) {
+    return validUrl(u) ? QR.svg(u) : '<div class="qr-empty">' + ic('qr', 56) + '</div>';
+  }
+  function qrHtml() {
+    var u = qrUrl, ok = validUrl(u), canShare = !!navigator.share;
+    return UI.sheetHead(t('qr.title'), t('qr.sub')) + '<div class="sheet-b">' +
+      '<div class="qr-box" id="qr-box" role="img" aria-label="QR">' + qrBox(u) + '</div>' +
+      '<p class="center muted sm">' + esc(t('qr.scan')) + '</p>' +
+      '<label class="fld"><span>' + esc(t('qr.link')) + '</span><input id="qr-url" type="url" dir="ltr" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" value="' + esc(u) + '"></label>' +
+      '<div id="qr-note">' + qrNote(u) + '</div>' +
+      '<div class="row-btns">' +
+        '<button type="button" class="btn" data-act="qrCopy"' + (ok ? '' : ' disabled') + '>' + ic('copy', 18) + esc(t('qr.copy')) + '</button>' +
+        '<button type="button" class="btn" data-act="qrSave"' + (ok ? '' : ' disabled') + '>' + ic('download', 18) + esc(t('qr.save')) + '</button>' +
+        (canShare ? '<button type="button" class="btn" data-act="qrShare"' + (ok ? '' : ' disabled') + '>' + ic('share', 18) + esc(t('qr.share')) + '</button>' : '') +
+      '</div>' +
+      '<div class="qr-steps"><h4>' + esc(t('qr.how')) + '</h4><p>' + ic('phone', 16) + '<span>' + esc(t('qr.stepAndroid')) + '</span></p><p>' + ic('phone', 16) + '<span>' + esc(t('qr.stepIOS')) + '</span></p></div>' +
+      '</div>';
+  }
+  UI.openQR = function () {
+    qrUrl = Store.get().shareUrl || pageUrl();
+    UI.openSheet(qrHtml(), { label: t('qr.title') });
+  };
+  UI.qrInput = function (val) {
+    qrUrl = String(val || '').trim();
+    var ok = validUrl(qrUrl);
+    Store.setPref('shareUrl', ok && qrUrl !== pageUrl() ? qrUrl : '');   // remember a custom address, forget the default
+    var box = $('#qr-box'), note = $('#qr-note');
+    if (box) box.innerHTML = qrBox(qrUrl);
+    if (note) note.innerHTML = qrNote(qrUrl);
+    $$('[data-act=qrCopy],[data-act=qrSave],[data-act=qrShare]').forEach(function (b) { b.disabled = !ok; });
+  };
+  UI.qrAct = function (act) {
+    if (!validUrl(qrUrl)) return;
+    if (act === 'qrCopy') {
+      var done = function () { UI.toast(t('qr.copied')); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(qrUrl).then(done, function () { fallbackCopy(done); });
+      else fallbackCopy(done);
+    } else if (act === 'qrSave') {
+      var c = document.createElement('canvas');
+      if (!QR.draw(c, qrUrl, 10, 4)) return;
+      c.toBlob(function (blob) {
+        if (!blob) return;
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = 'trainbook-qr.png';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+        UI.toast(t('qr.saved'));
+      }, 'image/png');
+    } else if (act === 'qrShare' && navigator.share) {
+      navigator.share({ title: 'TrainBook', text: t('qr.shareText'), url: qrUrl }).catch(function () { });
+    }
+  };
+  function fallbackCopy(done) {
+    var inp = $('#qr-url'); if (!inp) return;
+    inp.focus(); inp.select();
+    try { if (document.execCommand('copy')) done(); } catch (e) { }
+  }
 
   /* =============== course details =============== */
   var pick = null;

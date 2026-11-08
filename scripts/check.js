@@ -66,7 +66,20 @@ if (!errors) ok(enK.length + ' keys in each language, ' + used.size + ' keys ref
 const unused = enK.filter((k) => !used.has(k));
 if (unused.length) console.log('  · unused keys (harmless): ' + unused.join(', '));
 
-/* 3. syntax */
+/* 3. offline file list: every file the service worker precaches must exist (one missing file makes the whole install fail) */
+console.log('Offline precache list');
+const swSrc = fs.readFileSync(path.join(PUB, 'sw.js'), 'utf8');
+const listMatch = swSrc.match(/const ASSETS = \[([\s\S]*?)\];/);
+if (!listMatch) fail('could not find ASSETS in sw.js');
+else {
+  const files = [...listMatch[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  files.forEach((f) => { if (f !== './' && !fs.existsSync(path.join(PUB, f))) fail('sw.js precaches a missing file: ' + f); });
+  const html = fs.readFileSync(path.join(PUB, 'index.html'), 'utf8');
+  [...html.matchAll(/src="(js\/[^"]+)"/g)].map((m) => m[1]).forEach((s) => { if (!files.includes(s)) fail('index.html loads ' + s + ' but sw.js does not precache it (offline would break)'); });
+  if (!errors) ok(files.length + ' precached files exist and cover every script in index.html');
+}
+
+/* 4. syntax */
 console.log('Syntax');
 fs.readdirSync(path.join(PUB, 'js')).concat(['../sw.js']).filter((f) => f.endsWith('.js')).forEach((f) => {
   try { new vm.Script(fs.readFileSync(path.join(PUB, 'js', f), 'utf8'), { filename: f }); } catch (e) { fail(f + ': ' + e.message); }

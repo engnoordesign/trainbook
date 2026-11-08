@@ -86,7 +86,19 @@
     'upd.ready': 'A new version is ready', 'upd.reload': 'Update', 'upd.na': 'Updates work when the app is served over the web',
     'upd.downloading': 'Downloading the update...', 'upd.latest': "You're on the latest version",
 
-    'rm.title': 'Remove from today?', 'rm.msg': "This exercise will be removed from today's list only."
+    'rm.title': 'Remove from today?', 'rm.msg': "This exercise will be removed from today's list only.",
+
+    'qr.open': 'Get the app on your phone', 'qr.openDesc': 'Scan a QR code to open TrainBook on your phone and install it.',
+    'qr.show': 'Show QR code', 'qr.title': 'Install on your phone', 'qr.sub': 'Scan, open, install',
+    'qr.scan': 'Scan this code with your phone camera', 'qr.link': 'App address',
+    'qr.localWarn': "This address only works on this computer. Open the hosted version (or use this PC's network address, like http://192.168.1.20:8080) to get a code that works on your phone.",
+    'qr.httpNote': 'Phones only offer “Install app” on https:// addresses. With http:// you can still add it to the home screen.',
+    'qr.invalid': 'Enter a valid web address starting with http:// or https://',
+    'qr.how': 'How to install',
+    'qr.stepAndroid': 'Android (Chrome): open the link, then menu ⋮ → “Install app”.',
+    'qr.stepIOS': 'iPhone / iPad (Safari): open the link, tap Share → “Add to Home Screen”.',
+    'qr.copy': 'Copy link', 'qr.copied': 'Link copied', 'qr.save': 'Save QR image', 'qr.saved': 'QR image saved', 'qr.share': 'Share',
+    'qr.shareText': 'TrainBook - bodyweight training notebook'
   };
 
   var ar = {
@@ -173,7 +185,19 @@
     'upd.ready': 'يتوفر إصدار جديد', 'upd.reload': 'تحديث', 'upd.na': 'التحديثات تعمل عند تشغيل التطبيق عبر الويب',
     'upd.downloading': 'جارٍ تنزيل التحديث...', 'upd.latest': 'أنت على آخر إصدار',
 
-    'rm.title': 'إزالة من اليوم؟', 'rm.msg': 'سيُزال هذا التمرين من قائمة اليوم فقط.'
+    'rm.title': 'إزالة من اليوم؟', 'rm.msg': 'سيُزال هذا التمرين من قائمة اليوم فقط.',
+
+    'qr.open': 'حمّل التطبيق على هاتفك', 'qr.openDesc': 'امسح رمز QR لفتح دفتر التمرين على هاتفك وتثبيته.',
+    'qr.show': 'عرض رمز QR', 'qr.title': 'ثبّته على هاتفك', 'qr.sub': 'امسح، افتح، ثبّت',
+    'qr.scan': 'امسح هذا الرمز بكاميرا هاتفك', 'qr.link': 'عنوان التطبيق',
+    'qr.localWarn': 'هذا العنوان يعمل على هذا الحاسوب فقط. افتح النسخة المستضافة (أو استخدم عنوان الشبكة لهذا الجهاز مثل http://192.168.1.20:8080) لتحصل على رمز يعمل على هاتفك.',
+    'qr.httpNote': 'الهواتف لا تعرض «تثبيت التطبيق» إلا للعناوين التي تبدأ بـ https://. مع http:// يمكنك إضافته إلى الشاشة الرئيسية.',
+    'qr.invalid': 'أدخل عنوان ويب صالحًا يبدأ بـ http:// أو https://',
+    'qr.how': 'طريقة التثبيت',
+    'qr.stepAndroid': 'أندرويد (كروم): افتح الرابط ثم القائمة ⋮ ← «تثبيت التطبيق».',
+    'qr.stepIOS': 'آيفون / آيباد (سفاري): افتح الرابط ثم «مشاركة» ← «إضافة إلى الشاشة الرئيسية».',
+    'qr.copy': 'نسخ الرابط', 'qr.copied': 'تم نسخ الرابط', 'qr.save': 'حفظ صورة الرمز', 'qr.saved': 'تم حفظ صورة الرمز', 'qr.share': 'مشاركة',
+    'qr.shareText': 'دفتر التمرين - دفتر تمارين وزن الجسم'
   };
 
   var dict = { en: en, ar: ar };

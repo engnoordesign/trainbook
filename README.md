@@ -17,7 +17,7 @@ Works in **Arabic (RTL) and English**, on **phones, tablets and desktops**, in *
 
 **Super Training Day** 🔥 – tap the flame (top bar) to choose a day (today, a date, or every Friday…). On that day the **whole app turns red**.
 
-Also: backup/restore as a JSON file (Settings), automatic *missed* days when you skip the app, week start (Sat/Sun/Mon), install prompt, in-app "update ready" prompt.
+Also: **QR code to install on a phone**, backup/restore as a JSON file (Settings), automatic *missed* days when you skip the app, week start (Sat/Sun/Mon), install prompt, in-app "update ready" prompt.
 
 ## Run it locally
 
@@ -28,6 +28,15 @@ node scripts/serve.js        # or: npm start      -> http://localhost:5173
 Opening `public/index.html` straight from disk is fine for a quick look (installing the app and offline mode need http/https, i.e. the commands here, Docker or Cloudflare).
 
 On your phone: open the hosted/served URL → browser menu → **Install app / Add to Home Screen**.
+
+## Get it on a phone with a QR code
+
+On a computer, click the **QR icon** in the top bar (or **Settings → Get the app on your phone**), scan the code with your phone camera, open the link, then **Install app** (Android) or **Share → Add to Home Screen** (iPhone).
+
+- The code points at the address of the page you are on, so on your Cloudflare site it is automatically your public URL.
+- On `localhost` it warns you (a phone can't reach your PC's `localhost`). Edit the address field to your PC's network address, e.g. `http://192.168.1.20:8080`, and the code updates live (it is remembered).
+- **Save QR image** downloads a PNG you can print or share. **Copy link** and **Share** are there too.
+- The generator is `public/js/qr.js`: a small dependency-free encoder (byte mode, error-correction M, up to 213 characters).
 
 ## Docker (easy updates)
 
@@ -83,6 +92,7 @@ public/                 everything that gets served (this is the whole app)
   css/app.css           themes: light, dark, super-day red (CSS variables)
   js/data.js            exercise library + the 20 premade courses  <- edit here to add courses
   js/i18n.js            English + Arabic strings
+  js/qr.js              QR code generator (used by the "get the app on your phone" sheet)
   js/store.js           state, history logic, course progression (localStorage)
   js/timer.js           stopwatch / timer / interval engine
   js/views.js sheets.js ui-core.js app.js    pages, dialogs, helpers, controller
