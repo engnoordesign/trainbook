@@ -311,6 +311,7 @@
     cur = dk = sec = null;
     Store.detach();
     UI.closeSheet(true);
+    if (window.Music) Music.close();
     ['view', 'top', 'nav', 'pill', 'toast-root'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });   // nothing personal stays in the page
     UI.hist = null; UI.filter.today = UI.filter.course = 'all';
     App.refreshTheme();

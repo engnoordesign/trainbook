@@ -3,10 +3,12 @@
   'use strict';
 
   var KEY = 'trainbook.timer.v1';
+  var MAX_SEC = 359999;                           // 99:59:59
   var T = {
     mode: 'sw',   // visible segment: sw | cd | iv
     mute: false,
-    sw: { run: false, start: 0, base: 0, laps: [] },
+    presets: [],  // your own saved timer lengths, in seconds
+    sw: { run: false, start: 0, base: 0, laps: [], target: 0, alerted: false },   // target: optional "beep at" time (ms)
     cd: { run: false, end: 0, left: 60000, total: 60000, fin: false, lastSec: -1 },
     iv: { run: false, start: 0, base: 0, work: 30, rest: 15, rounds: 8, fin: false, phaseId: -1, lastSec: -1 }
   };
@@ -21,6 +23,8 @@
         ['sw', 'cd', 'iv'].forEach(function (k) { if (o[k]) Object.assign(T[k], o[k]); });
         if (o.mode) T.mode = o.mode;
         T.mute = !!o.mute;
+        if (Array.isArray(o.presets)) T.presets = o.presets.map(Number).filter(function (n) { return n >= 1 && n <= MAX_SEC && n % 1 === 0; }).slice(0, 12);
+        T.sw.target = Math.max(0, Math.min(MAX_SEC * 1000, +T.sw.target || 0));
       }
     } catch (e) { }
     /* a countdown that ended while the app was closed */
@@ -75,7 +79,13 @@
   function swToggle() {
     unlock();
     if (T.sw.run) { T.sw.base = swElapsed(); T.sw.run = false; }
-    else { T.sw.start = now(); T.sw.run = true; ensureLoop(); }
+    else { if (swElapsed() === 0) T.sw.alerted = false; T.sw.start = now(); T.sw.run = true; ensureLoop(); }
+    changed();
+  }
+  /** Beep when the stopwatch reaches this time (ms). 0 = no target. */
+  function swTarget(ms) {
+    ms = Math.max(0, Math.min(MAX_SEC * 1000, Math.round(+ms) || 0));
+    T.sw.target = ms; T.sw.alerted = ms > 0 && swElapsed() >= ms;
     changed();
   }
   function swLap() {
@@ -84,11 +94,23 @@
     T.sw.laps.unshift({ n: T.sw.laps.length + 1, total: el, split: el - prev });
     changed();
   }
-  function swReset() { T.sw = { run: false, start: 0, base: 0, laps: [] }; changed(); }
+  function swReset() { T.sw = { run: false, start: 0, base: 0, laps: [], target: T.sw.target, alerted: false }; changed(); }
 
   /* ---------- countdown ---------- */
   function cdLeft() { return T.cd.run ? Math.max(0, T.cd.end - now()) : T.cd.left; }
-  function cdSet(ms) { T.cd.run = false; T.cd.total = T.cd.left = Math.max(1000, ms); T.cd.fin = false; T.cd.lastSec = -1; changed(); }
+  function cdSet(ms) { T.cd.run = false; T.cd.total = T.cd.left = Math.max(1000, Math.min(MAX_SEC * 1000, ms)); T.cd.fin = false; T.cd.lastSec = -1; changed(); }
+  /** Any length you like: hours, minutes and seconds (up to 99:59:59). Returns the seconds, or 0 if the time is not valid. */
+  function hmsToSec(h, m, s) {
+    var v = (Math.round(+h || 0) * 3600) + (Math.round(+m || 0) * 60) + Math.round(+s || 0);
+    return v >= 1 && v <= MAX_SEC ? v : 0;
+  }
+  function presetAdd(sec) {
+    sec = Math.round(+sec);
+    if (!(sec >= 1 && sec <= MAX_SEC) || T.presets.indexOf(sec) >= 0) return false;
+    T.presets.push(sec); T.presets.sort(function (a, b) { return a - b; }); T.presets = T.presets.slice(0, 12);
+    changed(); return true;
+  }
+  function presetDel(sec) { T.presets = T.presets.filter(function (n) { return n !== +sec; }); changed(); }
   function cdStart(ms) {
     unlock();
     if (ms) { T.cd.total = T.cd.left = ms; }
@@ -119,11 +141,20 @@
     if (w < v.work) return { phase: 'work', round: r, left: v.work - w, phaseTotal: v.work, totalLeft: total - e };
     return { phase: 'rest', round: r, left: cycle - w, phaseTotal: v.rest, totalLeft: total - e };
   }
+  var IV_LIM = { work: [1, 3599, 5], rest: [0, 3599, 5], rounds: [1, 99, 1] };   // [min, max, step]
   function ivConfig(field, delta) {
     if (T.iv.run || (T.iv.base && !T.iv.fin)) return;
-    var lim = { work: [5, 600, 5], rest: [0, 600, 5], rounds: [1, 50, 1] }[field];
+    var lim = IV_LIM[field];
     if (!lim) return;
     T.iv[field] = Math.max(lim[0], Math.min(lim[1], T.iv[field] + delta * lim[2]));
+    T.iv.fin = false; changed();
+  }
+  /** Type an exact value (seconds for work / rest, a count for rounds). */
+  function ivSet(field, value) {
+    if (T.iv.run || (T.iv.base && !T.iv.fin)) return;
+    var lim = IV_LIM[field], v = Math.round(+value);
+    if (!lim || !isFinite(v)) return;
+    T.iv[field] = Math.max(lim[0], Math.min(lim[1], v));
     T.iv.fin = false; changed();
   }
   function ivToggle() {
@@ -150,6 +181,7 @@
         if (s <= 3 && s !== T.cd.lastSec) { T.cd.lastSec = s; beep(660, 90); }
       }
     }
+    if (T.sw.run && T.sw.target && !T.sw.alerted && swElapsed() >= T.sw.target) { T.sw.alerted = true; alarm(); changed(); }
     if (T.iv.run) {
       var info = ivInfo();
       if (info.phase === 'done') { T.iv.run = false; T.iv.fin = true; T.iv.base = ivTotal() * 1000; alarm(); changed(); }
@@ -201,9 +233,11 @@
     setHandlers: function (tk, ch) { onTick = tk; onChange = ch; },
     setMode: function (m) { T.mode = m; save(); },
     toggleMute: function () { T.mute = !T.mute; save(); if (!T.mute) { unlock(); beep(740, 80); } },
-    sw: { elapsed: swElapsed, toggle: swToggle, lap: swLap, reset: swReset },
+    sw: { elapsed: swElapsed, toggle: swToggle, lap: swLap, reset: swReset, target: swTarget },
     cd: { left: cdLeft, set: cdSet, start: cdStart, toggle: cdToggle, add: cdAdd, reset: cdReset },
-    iv: { elapsed: ivElapsed, total: ivTotal, info: ivInfo, config: ivConfig, toggle: ivToggle, reset: ivReset },
-    fmt: fmt, fmtUp: fmtUp, ivCfgLimits: { work: 5, rest: 5, rounds: 1 }
+    iv: { elapsed: ivElapsed, total: ivTotal, info: ivInfo, config: ivConfig, set: ivSet, toggle: ivToggle, reset: ivReset },
+    hmsToSec: hmsToSec, MAX_SEC: MAX_SEC,
+    presets: { list: function () { return T.presets.slice(); }, add: presetAdd, del: presetDel },
+    fmt: fmt, fmtUp: fmtUp
   };
 })();

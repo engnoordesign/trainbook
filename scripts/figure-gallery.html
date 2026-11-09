@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- Developer aid: shows every exercise picture so they can be checked by eye.  Run "node scripts/serve.js" and open http://127.0.0.1:5173/_gallery. -->
+<html lang="en" dir="ltr" data-theme="light" data-super="0">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Figure gallery</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    body { padding: 12px; } .wrap { max-width: 1400px; margin: auto; }
+    .row { display: block; padding: 6px 8px 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+    .row h4 { margin: 0 0 4px; font-size: .85rem; }
+    .row .figs { grid-template-columns: repeat(3, 1fr); gap: 6px; } .row .fig-f { padding: 4px 2px 6px; border-radius: 10px; } .row .fig-f figcaption { font-size: .7rem; }
+    .row .fig-n { width: 17px; height: 17px; font-size: .66rem; } .row .ins { display: flex; align-items: center; gap: 6px; font-size: .7rem; color: var(--muted); }
+    .row .fig-in { width: 56px; }
+    #out { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; align-items: start; }
+    .bar { position: sticky; top: 0; background: var(--bg); padding: 8px 0; z-index: 5; display: flex; gap: 8px; align-items: center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar"><b>Figure gallery</b>
+      <button class="btn sm" id="th">Dark</button>
+      <input id="q" placeholder="filter, e.g. push" style="min-height:38px;border-radius:12px;border:1.5px solid var(--line);padding:0 10px;background:var(--surface);color:var(--text)">
+      <span id="info" class="muted sm"></span></div>
+    <div id="out" class="grid"></div>
+  </div>
+  <script src="/js/figure.js"></script>
+  <script src="/js/poses.js"></script>
+  <script>
+    var out = document.getElementById('out'), info = document.getElementById('info');
+    function draw() {
+      var q = document.getElementById('q').value.trim().toLowerCase(), html = '', n = 0;
+      Object.keys(Poses).forEach(function (id) {
+        if (q && id.indexOf(q) < 0) return;
+        n++;
+        var r = Poses[id], vb = Figure.viewBox(r);
+        html += '<div class="row"><h4>' + id + (r.inset ? ' &nbsp; <span class="ins" style="display:inline-flex">' + Figure.inset(r.inset) + r.inset + '</span>' : '') + '</h4><div class="figs">' + r.frames.map(function (f, i) {
+          return '<figure class="fig-f">' + Figure.frameSvg(r, i, vb, { label: id }) + '<figcaption><span class="fig-n">' + (i + 1) + '</span>' + (r.caps[i] || '') + '</figcaption></figure>';
+        }).join('') + '</div></div>';
+      });
+      out.innerHTML = html; info.textContent = n + ' exercises';
+    }
+    document.getElementById('q').oninput = draw;
+    document.getElementById('th').onclick = function (e) {
+      var d = document.documentElement.dataset.theme === 'dark'; document.documentElement.dataset.theme = d ? 'light' : 'dark'; e.target.textContent = d ? 'Dark' : 'Light';
+    };
+    draw();
+  </script>
+</body>
+</html>

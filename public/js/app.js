@@ -79,11 +79,14 @@
   App.setLang = function (l) {
     I18N.setLang(l); Store.setPref('lang', l); Auth.setDevice({ lang: l });
     App.render(); UI.refreshSettings();
+    if (window.Music) Music.refreshHead();
   };
 
   /* ---------- steppers ---------- */
   function setVal(scope, field, id, val) {
-    $$('[data-val="' + field + '"][data-scope="' + scope + '"][data-for="' + id + '"]').forEach(function (n) { n.textContent = val; });
+    $$('[data-val="' + field + '"][data-scope="' + scope + '"][data-for="' + id + '"]').forEach(function (n) {
+      if (n.tagName === 'INPUT') n.value = val; else n.textContent = val;
+    });
   }
   function doStep(b) {
     var scope = b.dataset.scope, field = b.dataset.field, id = b.dataset.id, k = b.dataset.k, d = +b.dataset.step, e;
@@ -239,15 +242,48 @@
     superWd: function (d) { UI.superAct('superWd', d.v); },
     superAdd: function () { UI.superAct('superAdd'); },
     superDel: function (d) { UI.superAct('superDel', d.k); },
+    guide: function (d) { UI.openGuide(d.ex); },
+    guidePlay: function () { UI.guidePlay(); },
+    cGuide: function () { UI.courseAct('cGuide'); },
+    cEx: function (d) { UI.courseAct('cEx', d.v); },
     cDay: function (d) { UI.courseAct('cDay', d.v); },
     cStart: function () { UI.courseAct('cStart'); },
     /* timers */
-    tmode: function (d) { Timer.setMode(d.v); App.render(); },
+    tmode: function (d) { UI.filter.tmusic = false; Timer.setMode(d.v); App.render(); },
+    tmusic: function () { UI.filter.tmusic = true; App.render(); },
+    mcat: function (d) { UI.filter.music = d.v; App.render(); },
+    musicPlay: function (d) { var p = MusicData.byId(d.id); if (p && Music.playLib(p)) App.render(); },
+    musicShuffle: function () { Music.shuffle(); if (UI.filter.tmusic) App.render(); },
+    musicDaily: function () { var p = MusicData.daily(Store.todayKey()); if (Music.playLib(p)) { UI.toast(t('mu.playing', { n: I18N.lang === 'ar' ? p.ar : p.name })); App.render(); } },
+    musicExpand: function () { Music.expand(); },
+    musicClose: function () { Music.close(); if (UI.filter.tmusic) App.render(); },
+    musicPlayUrl: function () {
+      var u = $('#music-url'), n = $('#music-name');
+      if (u && Music.playUrl(u.value, n && n.value)) UI.toast(t('mu.playing', { n: Music.current().title }));
+    },
+    musicSave: function () {
+      var u = $('#music-url'), n = $('#music-name');
+      if (u && Music.saveUrl(u.value, n && n.value)) { UI.toast(t('mu.saved')); App.render(); }
+    },
+    musicMine: function (d) { var m = Music.mine()[+d.i]; if (m) { Music.playUrl(m.u, m.t); App.render(); } },
+    musicRemoveMine: function (d) { Music.removeMine(d.i); App.render(); },
     swToggle: function () { Timer.sw.toggle(); },
     swLap: function () { Timer.sw.lap(); },
     cdToggle: function () { Timer.cd.toggle(); },
     cdPreset: function (d) { Timer.cd.start(+d.ms); },
     cdAdd: function (d) { Timer.cd.add(+d.ms); },
+    cdSetCustom: function () { var s = UI.readHMS('cdt'); if (!s) { UI.toast(t('tm.errRange')); return; } Timer.cd.set(s * 1000); },
+    cdStartCustom: function () { var s = UI.readHMS('cdt'); if (!s) { UI.toast(t('tm.errRange')); return; } Timer.cd.start(s * 1000); },
+    cdSavePreset: function () {
+      var s = UI.readHMS('cdt'); if (!s) { UI.toast(t('tm.errRange')); return; }
+      if (Timer.presets.add(s)) {
+        if (!Timer.s.cd.run) Timer.cd.set(s * 1000);            // keep the time you typed on screen (a running timer is left alone)
+        UI.toast(t('tm.presetSaved', { t: UI.presetLabel(s) }));
+      } else UI.toast(t('tm.presetExists'));
+    },
+    presetDel: function (d) { Timer.presets.del(+d.s); },
+    swTargetSet: function () { var s = UI.readHMS('swt'); if (!s) { UI.toast(t('tm.errRange')); return; } Timer.sw.target(s * 1000); },
+    swTargetClear: function () { Timer.sw.target(0); },
     ivToggle: function () { Timer.iv.toggle(); },
     tmute: function () { Timer.toggleMute(); App.render(); },
     treset: function () { var m = Timer.s.mode; (m === 'sw' ? Timer.sw : m === 'cd' ? Timer.cd : Timer.iv).reset(); }
@@ -265,7 +301,16 @@
     if (e.target.id === 'f-title') UI.formInput(e.target.value);
     else if (e.target.id === 'qr-url') UI.qrInput(e.target.value);
   });
-  document.addEventListener('change', function (e) { if (e.target.id === 'imp-file' && e.target.files[0]) importData(e.target.files[0]); });
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (el.id === 'imp-file' && el.files[0]) importData(el.files[0]);
+    else if (el.classList && el.classList.contains('sin') && el.dataset.scope === 'iv') {       // a value typed into the interval settings
+      App.quiet(function () { Timer.iv.set(el.dataset.field, el.value); });
+      setVal('iv', el.dataset.field, '', Timer.s.iv[el.dataset.field]);
+      var tt = $('#iv-total'); if (tt) tt.textContent = UI.ivTotalText();
+      UI.tickTrain();
+    }
+  });
   /* forms inside dialogs (the lock screen handles its own forms in auth.js) */
   document.addEventListener('submit', function (e) {
     var f = e.target.closest && e.target.closest('form[data-submit]');
@@ -276,6 +321,10 @@
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && UI.sheetOpen()) UI.closeSheet();
     if (e.key === 'Enter' && e.target.id === 'f-title') { e.preventDefault(); UI.formSave(); }
+    if (e.key === 'Enter' && e.target.dataset && e.target.dataset.hms) {              // Enter in a time field = go
+      e.preventDefault();
+      if (e.target.dataset.hms === 'cdt') A.cdStartCustom(); else if (e.target.dataset.hms === 'swt') A.swTargetSet();
+    }
   });
   window.addEventListener('hashchange', function () { UI.closeSheet(true); window.scrollTo(0, 0); App.render(); });
 

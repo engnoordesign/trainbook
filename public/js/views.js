@@ -10,7 +10,9 @@
     var a = ' data-scope="' + o.scope + '" data-id="' + (o.id || '') + '" data-k="' + (o.k || '') + '" data-field="' + o.field + '"';
     return '<div class="stepper ' + (o.cls || '') + '">' +
       '<button type="button" class="step" data-step="' + (-o.step) + '"' + a + ' aria-label="' + esc(t('a.decrease')) + '">' + ic('minus', 18) + '</button>' +
-      '<div class="sval"><b data-val="' + o.field + '" data-scope="' + o.scope + '" data-for="' + (o.id || '') + '">' + o.val + '</b>' + (o.unit ? '<small>' + esc(o.unit) + '</small>' : '') + '</div>' +
+      '<div class="sval">' + (o.input
+        ? '<input class="sin" type="number" inputmode="numeric" min="' + o.min + '" max="' + o.max + '" value="' + o.val + '" data-val="' + o.field + '" data-scope="' + o.scope + '" data-for="' + (o.id || '') + '" data-field="' + o.field + '" aria-label="' + esc(o.label || o.field) + '">'
+        : '<b data-val="' + o.field + '" data-scope="' + o.scope + '" data-for="' + (o.id || '') + '">' + o.val + '</b>') + (o.unit ? '<small>' + esc(o.unit) + '</small>' : '') + '</div>' +
       '<button type="button" class="step" data-step="' + o.step + '"' + a + ' aria-label="' + esc(t('a.increase')) + '">' + ic('plus', 18) + '</button></div>';
   }
   UI.stepper = stepper;
@@ -44,7 +46,7 @@
     }
     return '<article class="task' + (st ? ' st-' + st : '') + '" style="--cat:var(--c-' + e.cat + ')" data-eid="' + e.id + '">' +
       '<div class="task-top">' +
-        '<div class="task-info"><h4 class="task-title">' + esc(UI.nameOf(e)) + '</h4>' +
+        '<div class="task-info"><h4 class="task-title">' + esc(UI.nameOf(e)) + UI.guideBtn(e.exId) + '</h4>' +
         '<div class="task-meta">' + UI.catDot(e.cat) + '<span>' + esc(t('cat.' + e.cat)) + '</span>' +
         (e.sets > 1 ? '<span class="dotsep">•</span><span>' + e.sets + ' ' + esc(t('u.sets')) + '</span>' : '') + '</div></div>' +
         '<button type="button" class="icon-btn xs ghost" data-act="rmEntry" data-id="' + e.id + '" data-k="' + k + '" aria-label="' + esc(t('a.remove')) + '">' + ic('trash', 16) + '</button>' +
@@ -147,7 +149,7 @@
         var sess = '';
         if (p.courseId && p.sess != null) { var cd = Data.course(p.courseId); if (cd && cd.sessions[p.sess]) sess = ' · ' + cd.sessions[p.sess].name[I18N.lang]; }
         h += '<div class="prow" style="--cat:var(--c-' + p.cat + ')"><span class="cbar"></span>' +
-          '<div class="prow-main"><div class="prow-title">' + esc(UI.nameOf(p)) + '</div>' +
+          '<div class="prow-main"><div class="prow-title">' + esc(UI.nameOf(p)) + UI.guideBtn(p.exId) + '</div>' +
           '<div class="prow-sub">' + esc(t('cat.' + p.cat)) + (p.sets > 1 ? ' · ' + p.sets + ' ' + esc(t('u.sets')) : '') + esc(sess) + '</div></div>' +
           stepper({ scope: 'plan', id: p.id, field: 'reps', step: UI.stepFor(p.unit), val: eff, unit: UI.unitLabel(p.unit), cls: 'sm' }) +
           '<button type="button" class="icon-btn xs" data-act="editPlan" data-id="' + p.id + '" aria-label="' + esc(t('a.edit')) + '">' + ic('pencil', 16) + '</button></div>';
@@ -235,7 +237,22 @@
   /* ================= TRAIN (timer / stopwatch / checklist) ================= */
   var CIRC = 553;
   var PRESETS = [15, 30, 45, 60, 90, 120, 180, 300];
-  UI.presetLabel = function (s) { return s < 60 ? s + t('u.secShort') : (s % 60 ? Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + (s % 60) : Math.floor(s / 60) + t('u.minShort')); };
+  UI.presetLabel = function (s) {
+    if (s >= 3600) { var hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60; return hh + ':' + (mm < 10 ? '0' : '') + mm + ':' + (ss < 10 ? '0' : '') + ss; }
+    return s < 60 ? s + t('u.secShort') : (s % 60 ? Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + (s % 60) : Math.floor(s / 60) + t('u.minShort'));
+  };
+  /** hours : minutes : seconds fields, ids <prefix>-h / -m / -s (any length up to 99:59:59) */
+  function hmsForm(prefix, sec) {
+    var v = [Math.floor(sec / 3600), Math.floor(sec % 3600 / 60), sec % 60], names = [['h', t('tm.h')], ['m', t('tm.min')], ['s', t('tm.sec')]];
+    return '<div class="hms" dir="ltr">' + names.map(function (x, i) {
+      return (i ? '<i>:</i>' : '') + '<label class="hms-f"><input id="' + prefix + '-' + x[0] + '" type="number" inputmode="numeric" min="0" max="99" value="' + v[i] + '" data-hms="' + prefix + '" aria-label="' + esc(x[1]) + '"><small>' + esc(x[1]) + '</small></label>';
+    }).join('') + '</div>';
+  }
+  /** read a form made by hmsForm -> seconds (0 when empty / out of range) */
+  UI.readHMS = function (prefix) {
+    var g = function (c) { var el = UI.$('#' + prefix + '-' + c); return el ? el.value : 0; };
+    return Timer.hmsToSec(g('h'), g('m'), g('s'));
+  };
 
   function swTime(ms) {
     var s = Timer.fmtUp(ms, true), i = s.lastIndexOf('.');
@@ -251,7 +268,12 @@
   UI.tickTrain = function () {
     var el = UI.$('#clk'); if (!el) return;
     var m = Timer.s.mode;
-    if (m === 'sw') { el.innerHTML = swTime(Timer.sw.elapsed()); return; }
+    if (m === 'sw') {
+      var el2 = Timer.sw.elapsed(), tg = Timer.s.sw.target;
+      el.innerHTML = swTime(el2);
+      el.classList.toggle('hit', !!tg && el2 >= tg);
+      return;
+    }
     var ring = UI.$('#ring');
     if (m === 'cd') {
       var left = Timer.cd.left(), tot = Timer.s.cd.total;
@@ -272,9 +294,13 @@
 
   V.train = function () {
     var T = Timer.s, m = T.mode, k = Store.todayKey();
-    var h = '<div class="seg" role="tablist">' + [['sw', 'tm.stopwatch'], ['cd', 'tm.timer'], ['iv', 'tm.intervals']].map(function (x) {
-      return '<button type="button" role="tab" class="' + (m === x[0] ? 'on' : '') + '" aria-selected="' + (m === x[0]) + '" data-act="tmode" data-v="' + x[0] + '">' + esc(t(x[1])) + '</button>';
-    }).join('') + '</div>';
+    var onMusic = !!UI.filter.tmusic;
+    var h = '<div class="seg s4" role="tablist">' + [['sw', 'tm.stopwatch'], ['cd', 'tm.timer'], ['iv', 'tm.intervals']].map(function (x) {
+      var on = !onMusic && m === x[0];
+      return '<button type="button" role="tab" class="' + (on ? 'on' : '') + '" aria-selected="' + on + '" data-act="tmode" data-v="' + x[0] + '">' + esc(t(x[1])) + '</button>';
+    }).join('') +
+      '<button type="button" role="tab" class="' + (onMusic ? 'on' : '') + '" aria-selected="' + onMusic + '" data-act="tmusic">' + esc(t('tm.music')) + '</button></div>';
+    if (onMusic && UI.musicView) return h + UI.musicView();
 
     var head = function (title) {
       return '<div class="clock-h"><h3>' + esc(title) + '</h3><div>' +
@@ -286,9 +312,9 @@
     };
 
     if (m === 'sw') {
-      var sw = T.sw;
+      var sw = T.sw, hit = !!sw.target && Timer.sw.elapsed() >= sw.target;
       h += '<section class="card clock">' + head(t('tm.stopwatch')) +
-        '<div class="clock-time big" id="clk" dir="ltr">' + swTime(Timer.sw.elapsed()) + '</div>' +
+        '<div class="clock-time big' + (hit ? ' hit' : '') + '" id="clk" dir="ltr">' + swTime(Timer.sw.elapsed()) + '</div>' +
         '<div class="clock-ctl">' +
           '<button type="button" class="rbtn" data-act="swLap"' + (sw.run ? '' : ' disabled') + '>' + ic('flag', 22) + '<span>' + esc(t('tm.lap')) + '</span></button>' +
           '<button type="button" class="bigbtn ' + (sw.run ? 'pause' : 'go') + '" data-act="swToggle" aria-label="' + esc(sw.run ? t('tm.pause') : t('tm.start')) + '">' + ic(sw.run ? 'pause' : 'play', 34) + '</button>' +
@@ -299,6 +325,12 @@
           return '<li><span class="muted">' + esc(t('tm.lapN', { n: l.n })) + '</span><b dir="ltr">' + Timer.fmtUp(l.split, true) + '</b><span class="muted" dir="ltr">' + Timer.fmtUp(l.total, true) + '</span></li>';
         }).join('') + '</ol>';
       }
+      /* optional target: the stopwatch beeps when it gets there */
+      h += '<div class="custom-time"><h4>' + ic('flag', 16) + esc(t('tm.target')) + (sw.target ? ' <b class="tg" dir="ltr">' + Timer.fmt(sw.target) + '</b>' : '') + '</h4>' +
+        hmsForm('swt', Math.round((sw.target || 0) / 1000)) +
+        '<div class="row-btns center"><button type="button" class="btn sm" data-act="swTargetSet">' + esc(t('tm.set')) + '</button>' +
+        (sw.target ? '<button type="button" class="btn sm danger-ghost" data-act="swTargetClear">' + esc(t('tm.targetClear')) + '</button>' : '') + '</div>' +
+        '<p class="muted sm center">' + esc(t('tm.targetHint')) + '</p></div>';
       h += '</section>';
     } else if (m === 'cd') {
       var cd = T.cd;
@@ -310,8 +342,16 @@
           '<button type="button" class="bigbtn ' + (cd.run ? 'pause' : 'go') + '" data-act="cdToggle" aria-label="' + esc(cd.run ? t('tm.pause') : t('tm.start')) + '">' + ic(cd.run ? 'pause' : 'play', 34) + '</button>' +
           '<button type="button" class="rbtn" data-act="cdAdd" data-ms="15000"><b>+15</b><span>' + esc(t('u.secShort')) + '</span></button>' +
         '</div>' +
+        '<div class="custom-time"><h4>' + ic('pencil', 16) + esc(t('tm.custom')) + '</h4>' + hmsForm('cdt', Math.round(cd.total / 1000)) +
+          '<div class="row-btns center"><button type="button" class="btn sm" data-act="cdSetCustom">' + esc(t('tm.set')) + '</button>' +
+          '<button type="button" class="btn sm primary" data-act="cdStartCustom">' + ic('play', 14) + esc(t('tm.setStart')) + '</button>' +
+          '<button type="button" class="btn sm" data-act="cdSavePreset">' + ic('plus', 14) + esc(t('tm.savePreset')) + '</button></div></div>' +
         '<p class="muted sm center">' + esc(t('tm.presetHint')) + '</p>' +
-        '<div class="chips wrap center">' + PRESETS.map(function (s) { return '<button type="button" class="chip" data-act="cdPreset" data-ms="' + (s * 1000) + '">' + esc(UI.presetLabel(s)) + '</button>'; }).join('') + '</div></section>';
+        '<div class="chips wrap center">' + PRESETS.map(function (s) { return '<button type="button" class="chip" data-act="cdPreset" data-ms="' + (s * 1000) + '">' + esc(UI.presetLabel(s)) + '</button>'; }).join('') +
+        Timer.presets.list().map(function (s) {
+          return '<span class="chip mine"><button type="button" class="chip-b" data-act="cdPreset" data-ms="' + (s * 1000) + '">' + esc(UI.presetLabel(s)) + '</button>' +
+            '<button type="button" class="chip-x" data-act="presetDel" data-s="' + s + '" aria-label="' + esc(t('tm.removePreset')) + '">' + ic('x', 12) + '</button></span>';
+        }).join('') + '</div></section>';
     } else {
       var v = T.iv, vw = ivView(), locked = v.run || (v.base > 0 && !v.fin);
       h += '<section class="card clock ph-' + vw.phase + '">' + head(t('tm.intervals')) +
@@ -322,9 +362,9 @@
           '<button type="button" class="bigbtn ' + (v.run ? 'pause' : 'go') + '" data-act="ivToggle" aria-label="' + esc(v.run ? t('tm.pause') : t('tm.start')) + '">' + ic(v.run ? 'pause' : 'play', 34) + '</button>' +
           '<span class="rbtn ghost-sp"></span></div>' +
         '<div class="iv-cfg' + (locked ? ' locked' : '') + '">' +
-          '<div><span>' + esc(t('tm.work')) + '</span>' + stepper({ scope: 'iv', field: 'work', step: 1, val: v.work, unit: t('u.secShort'), cls: 'sm' }) + '</div>' +
-          '<div><span>' + esc(t('tm.rest')) + '</span>' + stepper({ scope: 'iv', field: 'rest', step: 1, val: v.rest, unit: t('u.secShort'), cls: 'sm' }) + '</div>' +
-          '<div><span>' + esc(t('tm.rounds')) + '</span>' + stepper({ scope: 'iv', field: 'rounds', step: 1, val: v.rounds, unit: '', cls: 'sm' }) + '</div>' +
+          '<div><span>' + esc(t('tm.work')) + '</span>' + stepper({ scope: 'iv', field: 'work', step: 1, val: v.work, unit: t('u.secShort'), cls: 'sm', input: true, min: 1, max: 3599, label: t('tm.work') }) + '</div>' +
+          '<div><span>' + esc(t('tm.rest')) + '</span>' + stepper({ scope: 'iv', field: 'rest', step: 1, val: v.rest, unit: t('u.secShort'), cls: 'sm', input: true, min: 0, max: 3599, label: t('tm.rest') }) + '</div>' +
+          '<div><span>' + esc(t('tm.rounds')) + '</span>' + stepper({ scope: 'iv', field: 'rounds', step: 1, val: v.rounds, unit: '', cls: 'sm', input: true, min: 1, max: 99, label: t('tm.rounds') }) + '</div>' +
         '</div><p class="muted sm center" id="iv-total">' + esc(UI.ivTotalText()) + '</p></section>';
     }
 
@@ -337,7 +377,7 @@
       var st = e.status || '';
       return '<li class="chk-row' + (st ? ' st-' + st : '') + '" style="--cat:var(--c-' + e.cat + ')"><button type="button" class="chk" role="checkbox" aria-checked="' + (st === 'done') + '" data-act="chk" data-id="' + e.id + '" data-k="' + k + '" aria-label="' + esc(UI.nameOf(e)) + '">' +
         (st === 'done' ? ic('check', 18) : st === 'partial' ? ic('partial', 16) : st === 'missed' ? ic('x', 16) : '') + '</button>' +
-        '<span class="chk-name">' + esc(UI.nameOf(e)) + '</span><span class="muted sm">' + esc(UI.target(e)) + '</span></li>';
+        '<span class="chk-name">' + esc(UI.nameOf(e)) + UI.guideBtn(e.exId) + '</span><span class="muted sm">' + esc(UI.target(e)) + '</span></li>';
     }).join('') + '</ul>';
     h += '<button type="button" class="btn block" data-act="addToday">' + ic('plus', 18) + esc(t('a.addExercise')) + '</button></section>';
     return h;

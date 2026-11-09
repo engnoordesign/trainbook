@@ -70,6 +70,10 @@ http.createServer((req, res) => {
   try { url = new URL(req.url, 'http://x'); } catch (e) { res.writeHead(400).end('bad request'); return; }
   if (url.pathname.startsWith('/api/')) { api(req, res, url).catch((e) => { console.error(e); if (!res.headersSent) send(res, 500, { error: 'server_error' }); }); return; }
 
+  if (url.pathname === '/_gallery') {                // developer aid: every exercise picture on one page (this local server only)
+    fs.readFile(path.join(__dirname, 'figure-gallery.html'), (err, buf) => { res.writeHead(err ? 404 : 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }).end(err ? 'not found' : buf); });
+    return;
+  }
   let p;
   try { p = decodeURIComponent(url.pathname); } catch (e) { res.writeHead(400).end('bad request'); return; }
   if (p.endsWith('/')) p += 'index.html';

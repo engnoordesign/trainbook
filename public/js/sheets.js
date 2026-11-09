@@ -257,6 +257,8 @@
       '<div class="facts big"><span>' + esc(t('c.weeks', { n: c.weeks })) + '</span><span>' + esc(t('c.perWeek', { n: n })) + '</span><span class="lvl">' + UI.levelBars(c.level) + esc(t('lv.' + c.level)) + '</span></div>' +
       '<p>' + esc(c.desc[lang]) + '</p><p class="muted sm style">' + ic('star', 14) + esc(c.style[lang]) + '</p>' +
       '<p class="muted sm">' + esc(t('c.progNote')) + '</p>' +
+      '<button type="button" class="btn sm' + (pick.guide ? ' primary' : '') + '" data-act="cGuide" aria-expanded="' + !!pick.guide + '">' + ic('course', 16) + esc(t('g.course')) + '</button>' +
+      (pick.guide ? UI.courseGuideHtml(c) : '') +
       '<div class="fld"><span>' + esc(t('c.pickDays', { n: n })) + ' <b class="pickcount' + (ok ? ' ok' : '') + '">' + sel.length + '/' + n + '</b></span><div class="chips wrap">' + UI.weekOrder().map(function (w) {
         return '<button type="button" class="chip day' + (pick.days.indexOf(w) >= 0 ? ' on' : '') + '" data-act="cDay" data-v="' + w + '">' + esc(UI.weekdayName(w, 'short')) + '</button>';
       }).join('') + '</div></div><div class="sess-list">';
@@ -264,7 +266,9 @@
       h += '<div class="sess"><div class="sess-h"><b>' + esc(s.name[lang]) + '</b>' + (ok ? '<span class="wdbadge">' + esc(UI.weekdayName(sel[i], 'long')) + '</span>' : '') + '</div>' +
         s.ex.map(function (r) {
           var info = Data.exInfo(r[0]);
-          return '<div class="sess-r" style="--cat:var(--c-' + info.cat + ')"><span class="cbar"></span><span class="nm">' + esc(Data.exName(r[0], lang)) + '</span><span class="vl" dir="ltr">' + esc(rowTxt(r, info.unit)) + '</span></div>';
+          var key = i + '/' + r[0];
+          return '<div class="sess-r" style="--cat:var(--c-' + info.cat + ')"><span class="cbar"></span><span class="nm">' + esc(Data.exName(r[0], lang)) + UI.guideBtn(r[0], { act: 'cEx', v: key }) + '</span><span class="vl" dir="ltr">' + esc(rowTxt(r, info.unit)) + '</span></div>' +
+            (pick.ex === key ? UI.exInline(r[0]) : '');
         }).join('') + '</div>';
     });
     h += '</div></div><div class="sheet-f"><button type="button" class="btn primary grow" data-act="cStart"' + (ok ? '' : ' disabled') + '>' + ic('play', 18) + esc(active ? t('c.restart') : t('c.start')) + '</button></div>';
@@ -280,6 +284,8 @@
   };
   UI.courseAct = function (act, v) {
     if (!pick) return;
+    if (act === 'cGuide') { pick.guide = !pick.guide; UI.setSheet(courseHtml()); return; }
+    if (act === 'cEx') { pick.ex = pick.ex === v ? null : v; UI.setSheet(courseHtml()); return; }
     if (act === 'cDay') {
       var d = +v, i = pick.days.indexOf(d);
       if (i >= 0) pick.days.splice(i, 1); else if (pick.days.length < pick.course.sessions.length) pick.days.push(d);

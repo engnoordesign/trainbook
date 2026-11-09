@@ -11,7 +11,9 @@ Works in **Arabic (RTL) and English**, on **phones, tablets and desktops**, in *
 |---|---|
 | **Today** | Your exercises for today, grouped by category (Chest · Legs · Back · Arms · Core · Full body). Each one has a **+ / −** repetition counter and three buttons: **Done · Missed · Partial** (partial lets you record how much you did). |
 | **My Course** | Your weekly plan. Add/edit exercises (title, category, reps or seconds, sets, days of the week). Shows the premade course you are following, with its week-by-week progress. |
-| **Train** | A quick-start **stopwatch** (laps), **timer** (tap 15s…5m to start instantly), **interval timer** (work / rest / rounds) with beeps + vibration, screen kept awake, and today's **checklist**. A floating pill shows a running timer on other pages. |
+| **Train** | A quick-start **stopwatch** (laps, plus an optional "beep at" time), **timer** (tap 15s…5m, or type **any time up to 99:59:59** and save your own presets), **interval timer** (type any work / rest / rounds) with beeps + vibration, screen kept awake, today's **checklist**, and a **Music** tab (below). A floating pill shows a running timer on other pages. |
+| **Music** | Inside Train → Music: ~44 playlists (workout, trending charts from many countries incl. Egypt and Saudi Arabia, hip-hop, rock and metal, dance and EDM, Arabic and world, warm-up and cool-down), a **Surprise me** button, a pick for today, and a box for your own Spotify / YouTube / SoundCloud links. The mini-player stays on screen while you switch pages. |
+| **How to do it** | Tap the **?** next to any exercise (Today, My Course, the checklist, and inside a course) for a picture of the movement in numbered steps with a motion arrow, a short **animation**, step-by-step text, a tip and a common mistake, the muscles it works, and the equipment. Every premade course also has a **How to follow this course** section. All 66 exercises and 20 courses, in English and Arabic. |
 | **Courses** | **20 premade programs**, all bodyweight: 8 courses, 6 monthly plans, 6 calisthenics skill programs (handstand, front lever, planche, muscle-up, L-sit, pistol squat). Pick your training days, press start, and reps/hold-times grow automatically every week. |
 | **History** | Streak, perfect days, 30-day completion, and a month calendar (done / partial / missed / rest). Tap any day to see it, or fix a day you forgot to log. |
 
@@ -124,14 +126,22 @@ public/                 everything that gets served (this is the whole app)
   js/merge.js           merging two devices' copies of a profile (nothing logged is lost)
   js/account.js         Settings -> Profile and security (dialogs)
   js/store.js           state, history logic, course progression (saved through auth.js, encrypted)
-  js/timer.js           stopwatch / timer / interval engine
+  js/timer.js           stopwatch / timer / interval engine (any time you like)
+  js/music-data.js      the music library (verified Spotify playlists) + the safe link parser
+  js/music.js           the mini-player dock and the Music tab
+  js/figure.js          stick-figure engine (two-bone IK) that draws the exercise pictures
+  js/poses.js           the key poses of all 66 exercises (frames, arrows, props)
+  js/guides*.js         the how-to texts (66 exercises + 20 courses, English + Arabic)
+  js/guide.js           the "how to do it" sheet, animation and course guide
   js/views.js sheets.js ui-core.js app.js    pages, dialogs, helpers, controller
 src/                    the Cloudflare Worker: worker.mjs (routing + Durable Object), account-logic.mjs (the rules)
 scripts/                serve.js · check.js · stamp.js · make-icons.js · update.ps1/.sh · *-test.js
 Dockerfile  nginx.conf  docker-compose.yml  wrangler.jsonc
 ```
 
-Handy commands: `npm test` (encryption; the account service rules: signup, login, throttling, conflicts, recovery, deletion; Worker routing incl. simultaneous saves; merging; the offline/service-worker tests which model Cloudflare redirecting `/index.html`), `npm run check` (validates courses + translations + offline list), `npm run icons` (regenerates PNG icons), `npm run build` (stamps the build id).
+Handy commands: `npm test` (encryption; the account service rules: signup, login, throttling, conflicts, recovery, deletion; Worker routing incl. simultaneous saves; merging; the music library and link parser; the exercise pictures and written guides; the offline/service-worker tests which model Cloudflare redirecting `/index.html`), `npm run check` (validates courses + translations + offline list), `npm run music:check` (needs internet: checks every Spotify playlist still exists and has the title we show), `npm run icons` (regenerates PNG icons), `npm run build` (stamps the build id). To look at every exercise picture on one page, run `node scripts/serve.js` and open `http://127.0.0.1:5173/_gallery`.
+
+To add an exercise picture: add its poses to `public/js/poses.js` (angles and anchor points, see the comment at the top), its text to a `guides-*.js` file, then run `node scripts/figure-test.js`.
 
 ### Add your own premade course
 
@@ -152,6 +162,8 @@ Then run `npm run check`.
 - **Programs are original**, written in the *style/method* of the people named ("Inspired by …"). They are **not official programs** from those athletes and are not endorsed by them. Train within your limits; stop if something hurts.
 - **Data lives (encrypted) in the browser's local storage on each device**, and for global accounts also (encrypted) on the server. Clearing a browser's site data only removes that device's copy; a global account comes back when you sign in again. Device-only profiles are gone for good, so export a backup now and then (*Settings → Export*).
 - A merge only adds, so something you deleted on one device can come back after it syncs with another that still had it.
+- **Music** plays through the official Spotify, YouTube and SoundCloud players, so no audio is stored in the app and nothing from those services loads until you pick something. Spotify only plays full songs if you are signed in to Spotify in that browser; otherwise you hear 30-second previews. The playlists belong to Spotify (they update themselves, and now and then one is renamed or removed: `npm run music:check` tells you). Your own saved links stay on that device. The player needs internet.
+- The exercise pictures are drawn by the app itself (no image files), so they are tiny, work offline and follow light / dark and the red Super Day theme. They are general guidance, not medical advice: stop if something hurts.
 - Installable PWA features (service worker, install prompt) need **http(s)** (or localhost). Over `file://` the app still works.
 - iPhone/iPad: Safari → Share → **Add to Home Screen** (iOS has no install button).
 
@@ -159,6 +171,7 @@ Then run `npm run check`.
 
 **دفتر التمرين** تطبيق بسيط لتمارين وزن الجسم: صفحة لتمارين اليوم (تكرارات بزر + / − وثلاثة أزرار: تم · فاتني · جزئيًا)، وصفحة «كورسي» لخطتك الأسبوعية، وصفحة «تمرين» فيها ساعة إيقاف ومؤقت ومؤقت فواصل وقائمة مهام، وصفحة «الكورسات» فيها ٢٠ برنامجًا جاهزًا (كورسات، خطط شهرية، كاليسثنكس)، وصفحة «السجل» لأيام الإنجاز والفوات.
 **الحسابات العالمية:** كل شخص يُنشئ حسابًا باسم مستخدم وكلمة مرور، ويمكنه **تسجيل الدخول من أي جهاز** (خيار «تسجيل الدخول من جهاز آخر») فتُنزَّل بياناته وتُفتح بكلمة مروره. تُشفَّر البيانات داخل المتصفح (AES-256) والخادم لا يستطيع قراءتها، ويظهر **مفتاح استرداد** مرة واحدة، مع قفل تلقائي وخيار «أبقني مسجّل الدخول». تعمل بدون إنترنت وتتزامن لاحقًا، وعند تعديل جهازين معًا تُدمج التغييرات دون فقدان أي تمرين. تحتاج `https://`. (صورة دوكر لا تحوي خدمة الحسابات، فتبقى الملفات على الجهاز.)
+**جديد:** اضغط علامة **؟** بجانب أي تمرين لترى **رسمًا للحركة بالخطوات وعرضًا متحركًا** مع شرح الأداء ونصيحة وخطأ شائع والعضلات والأدوات المطلوبة، ولكل كورس قسم «كيف تتبع هذا الكورس». المؤقت وساعة الإيقاف يقبلان **أي وقت تريده** مع حفظ أوقاتك المفضلة، وفي صفحة «تمرين» تبويب **موسيقى** فيه نحو ٤٤ قائمة تشغيل (تمرين، الأكثر رواجًا في دول كثيرة، هيب هوب، روك، إلكترونيك، عربي وعالمي) وزر «فاجئني» ومشغّل صغير يبقى ظاهرًا أثناء التنقل بين الصفحات.
 يدعم العربية (من اليمين لليسار) والإنجليزية، والوضع الفاتح والداكن، ويعمل على كل الأجهزة وبدون إنترنت، ويُثبَّت كتطبيق. **اليوم الخارق**: اضغط أيقونة النار واختر يومًا ليتحول التطبيق كله إلى الأحمر.
 
 - تشغيل محلي: `node scripts/serve.js`
