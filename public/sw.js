@@ -14,7 +14,7 @@ const STAMPED = BUILD !== 'dev';
 const ASSETS = [
   './', 'index.html', 'manifest.webmanifest', 'favicon.svg',
   'css/app.css',
-  'js/icons.js', 'js/i18n.js', 'js/data.js', 'js/qr.js', 'js/vault.js', 'js/store.js', 'js/timer.js', 'js/ui-core.js', 'js/music-data.js', 'js/views.js', 'js/music.js', 'js/sheets.js', 'js/figure.js', 'js/poses.js', 'js/guides.js', 'js/guides-1.js', 'js/guides-2.js', 'js/guides-3.js', 'js/guides-courses.js', 'js/guide.js', 'js/merge.js', 'js/sync.js', 'js/auth.js', 'js/account.js', 'js/app.js',
+  'js/icons.js', 'js/i18n.js', 'js/data.js', 'js/qr.js', 'js/vault.js', 'js/store.js', 'js/timer.js', 'js/ui-core.js', 'js/music-data.js', 'js/library.js', 'js/offline.js', 'js/views.js', 'js/music.js', 'js/sheets.js', 'js/figure.js', 'js/poses.js', 'js/guides.js', 'js/guides-1.js', 'js/guides-2.js', 'js/guides-3.js', 'js/guides-courses.js', 'js/guide.js', 'js/merge.js', 'js/sync.js', 'js/auth.js', 'js/account.js', 'js/app.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png'
 ];
 

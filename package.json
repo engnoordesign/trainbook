@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node scripts/serve.js",
     "check": "node scripts/check.js",
-    "test": "node scripts/vault-test.js && node scripts/sw-test.js && node scripts/merge-test.js && node scripts/music-test.js && node scripts/figure-test.js && node scripts/server-test.js && node scripts/worker-test.js",
+    "test": "node scripts/vault-test.js && node scripts/sw-test.js && node scripts/merge-test.js && node scripts/music-test.js && node scripts/library-test.js && node scripts/figure-test.js && node scripts/server-test.js && node scripts/worker-test.js",
     "music:check": "node scripts/music-check.js",
     "icons": "node scripts/make-icons.js",
     "build": "node scripts/stamp.js",

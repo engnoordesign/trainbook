@@ -265,6 +265,22 @@
       var u = $('#music-url'), n = $('#music-name');
       if (u && Music.saveUrl(u.value, n && n.value)) { UI.toast(t('mu.saved')); App.render(); }
     },
+    offAdd: function () { var i = $('#ol-files'); if (i) i.click(); },
+    offFolder: function () { var i = $('#ol-folder'); if (i) i.click(); },
+    offPlayAll: function () { Music.playAllLocal(false); },
+    offShuffleAll: function () { Music.playAllLocal(true); },
+    offPlay: function (d) { Music.playFromList(d.id); },
+    offDel: function (d) { Offline.remove(d.id).then(function () { UI.toast(t('ol.removed')); Music.refreshList(); }); },
+    offClear: function () {
+      UI.confirm({ title: t('ol.clearTitle'), msg: t('ol.clearMsg', { n: Offline.list().length }), ok: t('a.remove'), danger: true,
+        onOk: function () { Offline.clear().then(function () { UI.toast(t('ol.removed')); App.render(); }); } });
+    },
+    offMore: function () { Music.more(); },
+    offToggle: function () { Offline.toggle(); },
+    offPrev: function () { Offline.prev(); },
+    offNext: function () { Offline.next(); },
+    offShuf: function () { Offline.setShuffle(!Offline.mode().shuffle); },
+    offRep: function () { Offline.cycleRepeat(); },
     musicMine: function (d) { var m = Music.mine()[+d.i]; if (m) { Music.playUrl(m.u, m.t); App.render(); } },
     musicRemoveMine: function (d) { Music.removeMine(d.i); App.render(); },
     swToggle: function () { Timer.sw.toggle(); },
@@ -300,10 +316,13 @@
   document.addEventListener('input', function (e) {
     if (e.target.id === 'f-title') UI.formInput(e.target.value);
     else if (e.target.id === 'qr-url') UI.qrInput(e.target.value);
+    else if (e.target.id === 'ol-search') Music.search(e.target.value);
+    else if (e.target.id === 'mp-seek') { var st = Offline.state(); if (st.dur) Offline.seek(e.target.value / 1000 * st.dur); }
   });
   document.addEventListener('change', function (e) {
     var el = e.target;
     if (el.id === 'imp-file' && el.files[0]) importData(el.files[0]);
+    else if (el.id === 'ol-files' || el.id === 'ol-folder') Music.addFiles(el);
     else if (el.classList && el.classList.contains('sin') && el.dataset.scope === 'iv') {       // a value typed into the interval settings
       App.quiet(function () { Timer.iv.set(el.dataset.field, el.value); });
       setVal('iv', el.dataset.field, '', Timer.s.iv[el.dataset.field]);

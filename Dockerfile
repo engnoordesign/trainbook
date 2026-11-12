@@ -7,7 +7,7 @@ COPY scripts ./scripts
 COPY src ./src
 COPY public ./public
 RUN node scripts/check.js && node scripts/vault-test.js && node scripts/sw-test.js && node scripts/merge-test.js \
-    && node scripts/music-test.js && node scripts/figure-test.js && node scripts/server-test.js && node scripts/worker-test.js && node scripts/stamp.js
+    && node scripts/music-test.js && node scripts/library-test.js && node scripts/figure-test.js && node scripts/server-test.js && node scripts/worker-test.js && node scripts/stamp.js
 
 # ---- stage 2: tiny static web server, runs as a non-root user on port 8080 ----
 # (This image serves the app only. The account/sync service lives in the Cloudflare Worker, or `node scripts/serve.js`;
